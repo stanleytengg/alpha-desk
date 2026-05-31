@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.fadacai.briefing</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/YOUR_USERNAME/path/to/portfolio/tools/briefing_runner.sh</string>
+  </array>
+
+  <!-- Fire at 13:00 America/New_York every day.
+       TZ env below makes launchd interpret Hour=13 in New York time,
+       so this automatically follows DST (ET 13:00 = UTC 17:00 or 18:00). -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>13</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key><string>America/New_York</string>
+    <!-- Add PATH so launchd can find python3 and claude CLI -->
+    <key>PATH</key><string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/Users/YOUR_USERNAME/.local/bin</string>
+    <key>HOME</key><string>/Users/YOUR_USERNAME</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USERNAME/path/to/portfolio/briefing-out/launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USERNAME/path/to/portfolio/briefing-out/launchd.err</string>
+
+  <!-- Retry once if exit code is non-zero -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <!-- Wake the Mac from sleep at scheduled time (requires AC power) -->
+  <key>WakeForNetwork</key>
+  <true/>
+</dict>
+</plist>

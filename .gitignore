@@ -1,0 +1,30 @@
+# Private portfolio data
+plan.md
+/journal/
+/feedback/
+/research/
+/reports/
+
+# Auto-send pipeline
+.env
+briefing-out/
+tools/__pycache__/
+
+# Runtime / auto-generated snapshots (contain real account data)
+current-position.md
+
+# Internal Claude Code state
+.claude/scheduled_tasks.lock
+
+# System files
+.DS_Store
+*.swp
+*.swo
+.claude/settings.local.json
+package.json
+package-lock.json
+
+# Python / tooling envs (defensive)
+.venv/
+venv/
+.serena/
