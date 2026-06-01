@@ -136,12 +136,26 @@ claude
 | Server | 取得方式 | 需要 key？ |
 |--------|----------|:---------:|
 | `firstrade-server` | 第三方 [morristai/firstrade-mcp](https://github.com/morristai/firstrade-mcp) + 你自己的憑證 shim（**勿把券商帳密 commit 進任何 repo**） | ✅ 券商登入 |
-| `yfinance-advanced` | 社群 yfinance MCP（有多個實作，yfinance 爬蟲免 key） | ❌ |
+| `yfinance-advanced` | PyPI 套件 [`yfinance-mcp`](https://pypi.org/project/yfinance-mcp/)，免 key；用 `uvx yfinance-mcp` 啟動 | ❌ |
 | `sec-edgar-mcp` | [sec-edgar-mcp](https://github.com/stefanoamorelli/sec-edgar-mcp)（需設 `SEC_EDGAR_USER_AGENT`，填你自己的 email） | ❌ |
 | `fmp-mcp` | [Financial-Modeling-Prep-MCP-Server](https://github.com/imbenrabi/Financial-Modeling-Prep-MCP-Server) | ✅ FMP token（free tier） |
 | `technical-mcp` | 姊妹 repo [fadacai-mcp-servers `/technical`](https://github.com/PatrickSUDO/fadacai-mcp-servers/tree/main/technical) | ❌（用 yfinance） |
 | `eodhd-mcp` | 姊妹 repo [fadacai-mcp-servers `/eodhd`](https://github.com/PatrickSUDO/fadacai-mcp-servers/tree/main/eodhd) | ✅ EODHD token |
 | `polymarket-mcp` | [polymarket-mcp-server](https://github.com/caiovicentino/polymarket-mcp-server)（demo mode 唯讀） | ❌ |
+
+**Claude Code 註冊指令（路徑替換成你自己的）：**
+
+```bash
+# 不需 key 的 server
+claude mcp add yfinance-advanced -- uvx yfinance-mcp
+claude mcp add technical -- uv --directory /path/to/fadacai-mcp-servers/technical run server.py
+claude mcp add sec-edgar-mcp --env SEC_EDGAR_USER_AGENT="Your Name your@email.com" -- uv --directory /path/to/sec-edgar-mcp run sec-edgar-mcp
+claude mcp add polymarket-mcp -- uv --directory /path/to/polymarket-mcp-server run polymarket-mcp
+
+# 需要 key 的 server
+claude mcp add eodhd-mcp --env EODHD_API_TOKEN=xxxx -- uv --directory /path/to/fadacai-mcp-servers/eodhd run server.py
+claude mcp add fmp-mcp --env FMP_API_KEY=xxxx -- node /path/to/fmp-mcp/dist/index.js
+```
 
 > 缺任一 server 不會讓整個框架失效——`/mcp-health` 會標出不可用者，skills 內建 retry → 健康檢查 → WebSearch fallback。
 
