@@ -10,6 +10,9 @@ plan.md
 briefing-out/
 tools/__pycache__/
 
+# MCP config (contains API tokens / credentials — use .mcp.json.example as template)
+.mcp.json
+
 # Runtime / auto-generated snapshots (contain real account data)
 current-position.md
 

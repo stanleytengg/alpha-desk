@@ -1,0 +1,39 @@
+{
+  "enableAllProjectMcpServers": true,
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(git *)",
+      "Bash(uv *)",
+      "Bash(npm *)",
+      "Bash(node *)",
+      "Bash(claude *)",
+      "Bash(launchctl *)",
+      "Bash(cp *)",
+      "Bash(mkdir *)",
+      "Bash(chmod *)",
+      "Bash(pip3 *)",
+      "Bash(python3 *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(curl *)",
+      "Bash(tail *)",
+      "Bash(head *)",
+      "Read",
+      "Edit",
+      "Write",
+      "WebSearch",
+      "WebFetch",
+      "Task",
+      "mcp__firstrade-server",
+      "mcp__yfinance-advanced",
+      "mcp__technical",
+      "mcp__eodhd-mcp",
+      "mcp__sec-edgar-mcp",
+      "mcp__fmp-mcp",
+      "mcp__polymarket-mcp"
+    ]
+  }
+}

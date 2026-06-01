@@ -1,0 +1,45 @@
+{
+  "_comment": "Copy to .mcp.json and fill in your own paths + API tokens. .mcp.json is gitignored (contains secrets). All 7 MCP servers below; omit any you don't use.",
+  "mcpServers": {
+    "technical": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["--directory", "/abs/path/to/fadacai-mcp-servers/technical", "run", "server.py"]
+    },
+    "yfinance-advanced": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["yfinance-mcp"]
+    },
+    "polymarket-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["polymarket-mcp"]
+    },
+    "eodhd-mcp": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["--directory", "/abs/path/to/fadacai-mcp-servers/eodhd", "run", "server.py"],
+      "env": {
+        "EODHD_API_TOKEN": "YOUR_EODHD_TOKEN_HERE"
+      }
+    },
+    "sec-edgar-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["sec-edgar-mcp"],
+      "env": {
+        "SEC_EDGAR_USER_AGENT": "Your Name your@email.com"
+      }
+    },
+    "fmp-mcp": {
+      "type": "http",
+      "url": "http://localhost:8081/mcp"
+    },
+    "firstrade-server": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["--directory", "/abs/path/to/firstrade-server", "run", "server.py"]
+    }
+  }
+}
