@@ -80,7 +80,7 @@ flowchart TD
     CODEX["🤖 Codex（opt-in）<br/>--codex flag<br/>B1 獨立第一性分析<br/>B2 機會掃描 · B3 輪動"]
     SONNET & OPUS -->|opt-in| CODEX
 
-    subgraph AutoSend ["📲 每日自動推送（ET 13:00）"]
+    subgraph AutoSend ["📲 每日自動推送（ET 11:30）"]
         direction LR
         LAUNCHD["⏰ launchd<br/>com.fadacai.briefing<br/>NYSE 交易日才跑<br/>週五加 --codex"]
         RUNNER["🔧 briefing_runner.sh<br/>~/.local/bin/<br/>TCC-safe wrapper"]
@@ -250,7 +250,7 @@ DRY_RUN=1 python3 tools/send_briefing.py latest   # Dry-run（不實際發送）
 
 ## Telegram 自動推送
 
-每個 NYSE 交易日 **ET 13:00**（夏令 UTC 17:00 / 冬令 UTC 18:00，荷蘭時間恆為 19:00）自動推送盤中決策摘要。週五加 `--codex` 第二意見。
+每個 NYSE 交易日 **ET 11:30**（夏令 UTC 15:30 / 冬令 UTC 16:30，荷蘭時間恆為 17:30）自動推送盤中決策摘要。週五加 `--codex` 第二意見。
 
 ### Telegram 訊息格式
 
@@ -363,7 +363,7 @@ tail -1 briefing-out/send-log.jsonl
 ### 架構說明
 
 ```
-launchd (每日 ET 13:00，NYSE 交易日)
+launchd (每日 ET 11:30，NYSE 交易日)
     │
     ▼
 ~/.local/bin/fadacai_briefing_runner.sh   ← TCC-safe wrapper
@@ -457,7 +457,7 @@ launchd (每日 ET 13:00，NYSE 交易日)
 每個 Verdict / Recommendation 前強制填寫：核心 thesis（可驗證命題）+ 證偽條件（2-3 個 falsifiable 觀察點）+ 機率分布（EV 計算）。確保結論有 ground truth 依據，不是 narrative。
 
 **Telegram 每天幾點收到？**
-美東 ET 13:00（NYSE 交易日），對應荷蘭時間夏令 19:00 / 冬令 19:00（自動 DST-aware）。
+美東 ET 11:30（NYSE 交易日），對應荷蘭時間夏令 17:30 / 冬令 17:30（自動 DST-aware）。
 
 ---
 

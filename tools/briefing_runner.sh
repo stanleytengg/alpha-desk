@@ -68,12 +68,19 @@ while [[ $attempt -lt $RETRY_MAX ]]; do
   attempt=$((attempt + 1))
   log "Attempt $attempt/$RETRY_MAX"
 
-  if claude -p "$PROMPT" >> "$LOG_DIR/launchd.log" 2>> "$LOG_DIR/launchd.err"; then
+  # Wrap in a hard timeout (default 900s) so a hung headless claude -p
+  # can't block for hours — alarm kills it and the retry loop takes over.
+  # macOS has no `timeout`; perl's alarm is built-in and portable.
+  CLAUDE_TIMEOUT="${CLAUDE_TIMEOUT:-900}"
+  if perl -e 'alarm shift; exec @ARGV' "$CLAUDE_TIMEOUT" claude -p "$PROMPT" >> "$LOG_DIR/launchd.log" 2>> "$LOG_DIR/launchd.err"; then
     log "Claude briefing completed successfully"
     success=true
     break
   else
     EXIT_CODE=$?
+    if [[ $EXIT_CODE -eq 142 ]]; then
+      log "Claude TIMED OUT after ${CLAUDE_TIMEOUT}s (alarm) — treating as failure"
+    fi
     log "Claude exited with code $EXIT_CODE"
     if [[ $attempt -lt $RETRY_MAX ]]; then
       log "Retrying in $((attempt * 30))s…"

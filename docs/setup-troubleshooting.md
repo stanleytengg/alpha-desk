@@ -30,6 +30,7 @@ claude mcp add fmp-mcp --transport http http://localhost:8081/mcp
 ## 4. headless `claude -p` 兩大坑（會 exit 0 但沒產出）
 - **PATH 找不到 claude**（exit 127）：plist 的 `PATH` 加 `/Users/YOU/.local/bin`。
 - **MCP 權限非互動模式無法授予**：claude 拿不到持倉→拒絕捏造→空手而回。解法 `.claude/settings.json` 預授權：
+- **claude -p 可能 hang 數小時**（尤其同機另有互動 claude session 時）：runner 用 `perl -e 'alarm shift; exec @ARGV' 900 claude -p ...` 加 900s 硬超時，超時 exit 142 走 retry，避免卡死。
 ```json
 { "enableAllProjectMcpServers": true,
   "permissions": { "defaultMode": "acceptEdits",
@@ -47,7 +48,8 @@ launchd 跑 `/bin/bash` 存取 `~/Desktop` 被擋（`Operation not permitted`）
 ## 7. Mac 須醒著（最易忽略）
 launchd 在睡眠不觸發。用 pmset 定時喚醒（需 sudo、接 AC）：
 ```bash
-sudo pmset repeat wake MTWRF 18:50:00   # 時間換算成你時區的 ET 13:00 前 10 分鐘
+sudo pmset repeat wake MTWRF 17:20:00   # 換算成你時區的 ET 11:30 前 10 分鐘（CEST 17:30）
+# 注意：plist 時間改了，pmset 喚醒也要一起改，否則機器睡眠時 launchd 不觸發
 ```
 
 ## 8. 雜項
