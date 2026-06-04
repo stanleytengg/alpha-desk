@@ -45,12 +45,12 @@ fi
 
 # ── Pre-load data caches (non-fatal) ──────────────────────────────────────
 log "Refreshing macro cache (FRED)..."
-python3 "$SCRIPT_DIR/fetch_macro.py" \
+uv run --directory "$SCRIPT_DIR" python3 "$SCRIPT_DIR/fetch_macro.py" \
   >> "$LOG_DIR/launchd.log" 2>> "$LOG_DIR/launchd.err" \
   || log "macro refresh failed (non-fatal, briefing continues with stale/missing cache)"
 
 log "Refreshing earnings cache (yfinance)..."
-python3 "$SCRIPT_DIR/earnings_history.py" \
+uv run --directory "$SCRIPT_DIR" python3 "$SCRIPT_DIR/earnings_history.py" \
   >> "$LOG_DIR/launchd.log" 2>> "$LOG_DIR/launchd.err" \
   || log "earnings refresh failed (non-fatal, briefing continues with stale/missing cache)"
 
