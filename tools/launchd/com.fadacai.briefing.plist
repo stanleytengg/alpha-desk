@@ -11,14 +11,16 @@
     <string>/Users/YOUR_USERNAME/path/to/portfolio/tools/briefing_runner.sh</string>
   </array>
 
-  <!-- Fire at 13:00 America/New_York every day.
-       TZ env below makes launchd interpret Hour=13 in New York time,
-       so this automatically follows DST (ET 13:00 = UTC 17:00 or 18:00). -->
+  <!-- Multiple ET trigger points. TZ env below interprets Hour in New York time
+       (auto DST). A laptop often sleeps through any single fixed time, so we fire
+       at several; briefing_runner.sh bails immediately if already sent today, and
+       send_briefing.py dedups — so at most ONE briefing goes out per day. -->
   <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key><integer>13</integer>
-    <key>Minute</key><integer>0</integer>
-  </dict>
+  <array>
+    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>30</integer></dict>
+  </array>
 
   <key>EnvironmentVariables</key>
   <dict>

@@ -45,12 +45,23 @@ claude mcp add fmp-mcp --transport http http://localhost:8081/mcp
 ## 6. macOS TCC
 launchd 跑 `/bin/bash` 存取 `~/Desktop` 被擋（`Operation not permitted`）→ System Settings → Privacy & Security → Full Disk Access → 加 `/bin/bash`。
 
-## 7. Mac 須醒著（最易忽略）
-launchd 在睡眠不觸發。用 pmset 定時喚醒（需 sudo、接 AC）：
-```bash
-sudo pmset repeat wake MTWRF 17:20:00   # 換算成你時區的 ET 11:30 前 10 分鐘（CEST 17:30）
-# 注意：plist 時間改了，pmset 喚醒也要一起改，否則機器睡眠時 launchd 不觸發
+## 7. Mac 睡眠 → launchd 不觸發（筆電最大坑）
+launchd 在睡眠不觸發，`pmset wake` 喚醒後筆電（尤其合蓋 clamshell）常立刻睡回去，到觸發那秒又睡著。單一固定時間極不可靠。
+
+**解法 — 多觸發點 + dedup**（best for laptop）：plist 設多個 `StartCalendarInterval`（ET 11:30 / 13:30 / 15:30），只要當天任一時段醒著就觸發；`briefing_runner.sh` 開頭檢查「今天發過沒」、`send_briefing.py` 再 dedup → 一天最多實際發一次。
+```xml
+<key>StartCalendarInterval</key>
+<array>
+  <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>30</integer></dict>
+  <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>30</integer></dict>
+  <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>30</integer></dict>
+</array>
 ```
+搭配 pmset 喚醒第一個時間點（需 sudo、接 AC）：
+```bash
+sudo pmset repeat wake MTWRF 17:20:00   # 換算成你時區，ET 11:30 前 10 分鐘
+```
+> 仍要求機器在某個觸發點是醒的。完全可靠需接 AC + 設定「接電源永不睡眠」，或合蓋接外接螢幕。
 
 ## 8. 雜項
 - **`SMTP_PASS` 有空格要加引號**：`SMTP_PASS="xxxx xxxx xxxx xxxx"`。
