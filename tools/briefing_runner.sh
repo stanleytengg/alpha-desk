@@ -35,16 +35,6 @@ if [[ "$SKIP_NON_TRADING" == "true" ]]; then
   fi
 fi
 
-# ── Skip if already sent today ─────────────────────────────────────────────
-# plist has multiple StartCalendarInterval triggers (MacBook sleeps through some);
-# once one succeeds, later triggers should bail BEFORE spinning up claude -p.
-TODAY=$(date +%Y-%m-%d)
-if grep -q "\"date\": \"$TODAY\"" "$LOG_DIR/send-log.jsonl" 2>/dev/null \
-   && grep "\"date\": \"$TODAY\"" "$LOG_DIR/send-log.jsonl" | grep -q '"telegram": "ok"'; then
-  log "Already sent today ($TODAY) — skipping this trigger"
-  exit 0
-fi
-
 # ── Friday → add --codex ───────────────────────────────────────────────────
 DOW=$(python3 -c "from datetime import date; print(date.today().weekday())")  # 4 = Friday
 CODEX_FLAG=""
