@@ -214,6 +214,7 @@ A4 欄規則：
 - `unavailable` → `(N/A)`；`low` → 顯示數字 + `⚠️`；`ok` → 顯示數字
 - `A4vsA3% = (own_target − wall_street_target) / wall_street_target`
 - |A4vsA3%| > 20% → 備註欄加：「我較 Street 樂觀」/ 「我較 Street 保守」
+- **EPS 修正動能（備註欄）**：讀 `forward_estimates.curr_fy`，`revisions_up_30d ≫ down_30d` 或 `eps_revision_30d_pct > 0` → 標 `共識上修↑`（guidance 偏正領先訊號）；反之 `共識下修↓`。僅 flag，非估值輸入
 
 偏離 > ±30% → 標 `⚠️ 大幅偏離`；偏離 > ±50% → 標 `⚠️⚠️ 異常大偏離，錨點可能失效`
 
