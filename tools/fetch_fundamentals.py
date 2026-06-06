@@ -51,6 +51,8 @@ FUNDAMENTALS_FILTER = ",".join([
     "Financials::Income_Statement::yearly",
     # P2: shares outstanding (needed for own_fwdEPS = rev × margin ÷ shares)
     "SharesStats::SharesOutstanding",
+    # P4: analyst forward consensus (A3 anchor fwdEPS + EPS revision momentum)
+    "Earnings::Trend",
 ])
 
 # Low-EPS-base tickers where avg_surprise_pct is unreliable (see README / CLAUDE.md)
@@ -188,6 +190,57 @@ def _num(v) -> float | None:
         return None
 
 
+# Forward-looking Earnings::Trend period codes → friendly label.
+# (0q = current quarter, +1q = next quarter, 0y = current FY, +1y = next FY)
+_FORWARD_PERIOD_LABELS = {"0q": "curr_q", "+1q": "next_q", "0y": "curr_fy", "+1y": "next_fy"}
+
+
+def _extract_forward_estimates(trend_raw: dict) -> dict:
+    """Reshape EODHD Earnings::Trend → {next_q/curr_fy/next_fy/curr_q} consensus.
+
+    The section is keyed by fiscal date and carries many historical 0q/0y rows;
+    for each forward period code we keep only the entry with the latest date.
+    Estimate magnitudes use _safe_float (0.0 = data gap → None); revision counts
+    use _num (0 is a real count). eps_revision_30d_pct = consensus EPS now vs
+    30 days ago — an upward drift leads post-guidance analyst upgrades.
+    """
+    if not isinstance(trend_raw, dict):
+        return {}
+    latest_by_period: dict = {}
+    for date_key, entry in trend_raw.items():
+        if not isinstance(entry, dict):
+            continue
+        period = entry.get("period")
+        if period not in _FORWARD_PERIOD_LABELS:
+            continue
+        cur = latest_by_period.get(period)
+        if cur is None or date_key > cur[0]:
+            latest_by_period[period] = (date_key, entry)
+
+    out: dict = {}
+    for period, (date_key, e) in latest_by_period.items():
+        eps_cur = _safe_float(e.get("epsTrendCurrent"))
+        eps_30d = _safe_float(e.get("epsTrend30daysAgo"))
+        rev_30d_pct = None
+        if eps_cur is not None and eps_30d not in (None, 0):
+            rev_30d_pct = round((eps_cur - eps_30d) / abs(eps_30d) * 100, 2)
+        out[_FORWARD_PERIOD_LABELS[period]] = {
+            "period": period,
+            "date": date_key,
+            "eps_avg": _safe_float(e.get("earningsEstimateAvg")),
+            "eps_low": _safe_float(e.get("earningsEstimateLow")),
+            "eps_high": _safe_float(e.get("earningsEstimateHigh")),
+            "eps_num_analysts": _num(e.get("earningsEstimateNumberOfAnalysts")),
+            "eps_growth": _safe_float(e.get("earningsEstimateGrowth")),
+            "rev_avg": _safe_float(e.get("revenueEstimateAvg")),
+            "rev_growth": _safe_float(e.get("revenueEstimateGrowth")),
+            "eps_revision_30d_pct": rev_30d_pct,
+            "revisions_up_30d": _num(e.get("epsRevisionsUpLast30days")),
+            "revisions_down_30d": _num(e.get("epsRevisionsDownLast30days")),
+        }
+    return out
+
+
 # ── Fundamentals snapshot ───────────────────────────────────────────────────
 def fetch_snapshot(sym_us: str, token: str) -> dict:
     """Fetch compact fundamentals for one ticker (EODHD format, e.g. 'MU.US')."""
@@ -227,6 +280,15 @@ def fetch_snapshot(sym_us: str, token: str) -> dict:
         or _num((data.get("SharesStats") or {}).get("SharesOutstanding"))
     )
 
+    # P4: analyst forward consensus (A3 anchor fwdEPS + revision momentum) —
+    # Earnings::Trend may come back flat-keyed or nested under Earnings.
+    trend_raw = (
+        data.get("Earnings::Trend")
+        or (data.get("Earnings") or {}).get("Trend", {})
+        or {}
+    )
+    forward_estimates = _extract_forward_estimates(trend_raw)
+
     return {
         "name": data.get("General::Name"),
         "sector": data.get("General::Sector"),
@@ -255,6 +317,8 @@ def fetch_snapshot(sym_us: str, token: str) -> dict:
             "sma_200d": _safe_float(tech.get("200DayMA")),
             "short_percent_float": _safe_float(tech.get("ShortPercent")),
         },
+        # P4: analyst forward consensus (next_q/curr_fy/next_fy) for A3 fwdEPS + P3 signals
+        "forward_estimates": forward_estimates,
         # P2: time series for A4 self-valuation (compute_self_valuation uses these)
         "financials": {
             "revenue_yearly": rev_yearly,         # [{date, value}] newest-first, up to 5y
@@ -329,23 +393,31 @@ def fetch_base_rate(sym_us: str, token: str, ticker_plain: str) -> dict:
 
 
 # ── A4 self-built valuation anchor ─────────────────────────────────────────
-def compute_self_valuation(sym: str, highlights: dict, financials: dict) -> dict:
+def compute_self_valuation(
+    sym: str, highlights: dict, financials: dict, forward_estimates: dict | None = None
+) -> dict:
     """Compute the A4 self-built anchor: own_fwdEPS = projected_revenue × net_margin ÷ shares.
 
-    Independence guarantee: NO analyst estimate used anywhere. Revenue from historical
-    EODHD income statement; margin from trailing (or 2-year trend if steadily rising);
-    growth projection = CAGR faded toward terminal with bounded macro nudge.
+    Independence guarantee for A4: NO analyst estimate used in own_fwdEPS. Revenue from
+    historical EODHD income statement; margin from trailing (or 2-year trend if steadily
+    rising); growth projection = CAGR faded toward terminal with bounded macro nudge.
 
-    own_target_price = own_fwdEPS × base_FairPE (approximated here using A1/A2/A3 from
-    the same cache pass; skills may refine with more accurate fwdEPS at render time).
+    own_target_price = own_fwdEPS × base_FairPE, where base_FairPE = median(A1,A2,A3).
+    A3 ("analyst-implied" PE) = wall_street_target ÷ fwdEPS. The A3 fwdEPS now prefers
+    real analyst consensus (forward_estimates next_fy → curr_fy eps_avg) and only falls
+    back to the eps_ttm×(1+growth) approximation when consensus is missing. A4's own_fwdEPS
+    stays fully independent of these analyst numbers.
 
     Args:
         sym: Plain ticker string (e.g. "MU") — used for AI_LEADERS lookup.
         highlights: The highlights dict from fetch_snapshot() (same ticker).
         financials: The financials dict from fetch_snapshot() (revenue_yearly, etc.).
+        forward_estimates: The forward_estimates dict from fetch_snapshot() (consensus
+            eps_avg per next_q/curr_fy/next_fy). Used only for the A3 anchor's fwdEPS.
 
     Returns:
-        self_valuation dict — confidence in {ok, low, unavailable}.
+        self_valuation dict — confidence in {ok, low, unavailable}; carries
+        a3_fwdeps_source in {consensus_next_fy, consensus_curr_fy, approx}.
         Consumers: check confidence=="unavailable" → skip A4 (show "(self-val N/A)").
     """
     def _unavail(notes: str) -> dict:
@@ -361,6 +433,7 @@ def compute_self_valuation(sym: str, highlights: dict, financials: dict) -> dict
             "net_margin": None,
             "shares_outstanding": None,
             "base_fair_pe_approx": None,
+            "a3_fwdeps_source": None,
             "notes": notes,
         }
 
@@ -471,10 +544,25 @@ def compute_self_valuation(sym: str, highlights: dict, financials: dict) -> dict
 
     eps_ttm = highlights.get("eps_ttm")
     wall_st_pt = highlights.get("wall_street_target")
-    fwdEPS_approx = (eps_ttm * (1.0 + growth_yoy)) if (eps_ttm and growth_yoy) else None
+    # A3 fwdEPS: prefer real analyst consensus. Use current-FY (0y) consensus first —
+    # it's the near-term forward EPS the standard ForwardPE convention uses, so A3 stays
+    # horizon-consistent with A1/current_PE (off-calendar fiscal years make next_fy 18-24mo
+    # out and artificially cheapen A3). next_fy is the fallback, then the eps_ttm×(1+growth)
+    # approximation only when no consensus is available.
+    fe = forward_estimates or {}
+    consensus_curr_fy = (fe.get("curr_fy") or {}).get("eps_avg")
+    consensus_next_fy = (fe.get("next_fy") or {}).get("eps_avg")
+    if consensus_curr_fy and consensus_curr_fy > 0:
+        a3_fwdeps, a3_fwdeps_source = consensus_curr_fy, "consensus_curr_fy"
+    elif consensus_next_fy and consensus_next_fy > 0:
+        a3_fwdeps, a3_fwdeps_source = consensus_next_fy, "consensus_next_fy"
+    elif eps_ttm and growth_yoy:
+        a3_fwdeps, a3_fwdeps_source = eps_ttm * (1.0 + growth_yoy), "approx"
+    else:
+        a3_fwdeps, a3_fwdeps_source = None, "approx"
     a3 = None
-    if wall_st_pt and fwdEPS_approx and fwdEPS_approx > 0:
-        a3 = wall_st_pt / fwdEPS_approx
+    if wall_st_pt and a3_fwdeps and a3_fwdeps > 0:
+        a3 = wall_st_pt / a3_fwdeps
 
     valid_anchors = [a for a in [a1, a2, a3] if a is not None and a > 0]
     if valid_anchors:
@@ -502,6 +590,7 @@ def compute_self_valuation(sym: str, highlights: dict, financials: dict) -> dict
         notes_parts.append("macro:" + ",".join(macro_notes))
     if confidence == "low":
         notes_parts.append(f"⚠️ rev_stdev={stdev_growth:.1%}>30%")
+    notes_parts.append(f"A3_fwdEPS={a3_fwdeps_source}")
 
     return {
         "own_fwdEPS": round(own_fwdEPS, 4),
@@ -513,6 +602,7 @@ def compute_self_valuation(sym: str, highlights: dict, financials: dict) -> dict
         "net_margin": round(net_margin, 4),
         "shares_outstanding": shares,
         "base_fair_pe_approx": round(base_fair_pe, 2) if base_fair_pe else None,
+        "a3_fwdeps_source": a3_fwdeps_source,
         "own_target_price": round(own_target_price, 2) if own_target_price else None,
         "confidence": confidence,
         "notes": "; ".join(notes_parts),
@@ -570,7 +660,10 @@ def main() -> int:
             snapshot = fetch_snapshot(sym_us, token)
             base_rate = fetch_base_rate(sym_us, token, sym)
             # P2: compute A4 self-built anchor from historical revenue series
-            sv = compute_self_valuation(sym, snapshot["highlights"], snapshot["financials"])
+            sv = compute_self_valuation(
+                sym, snapshot["highlights"], snapshot["financials"],
+                snapshot.get("forward_estimates"),
+            )
             result[sym] = {"snapshot": snapshot, "base_rate": base_rate, "self_valuation": sv}
             sv_note = (
                 f"A4_own_pt=${sv.get('own_target_price')} ({sv['confidence']})"

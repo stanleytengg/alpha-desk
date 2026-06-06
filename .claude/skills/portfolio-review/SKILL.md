@@ -199,7 +199,7 @@ Use `mcp__yfinance-advanced__get_stock_info` for financial data.
 |------|------|---------|
 | A1 市場 PE | `highlights.pe_ratio` | 0.0/null → 標 N/A |
 | A2 PEG 錨 | `peg_ratio × growth%`；AI 龍頭 PEG=1.5，其餘=1.0 | 0.0/null → 標 N/A |
-| A3 分析師錨 | `wall_street_target ÷ fwdEPS` | 任一缺 → 標 N/A |
+| A3 分析師錨 | `wall_street_target ÷ fwdEPS`；fwdEPS 來源優先序 `forward_estimates.curr_fy.eps_avg`（真實共識）→ `next_fy.eps_avg` → `eps_ttm×(1+growth)` 近似（cache `self_valuation.a3_fwdeps_source` 已標來源）| 任一缺 → 標 N/A |
 | **A4 自建錨** | `self_valuation.own_target_price`（cache 已算） | `unavailable` → `(N/A)`；`low` → `⚠️`；**不進 median** |
 
 情境 FairPE：base=median(A1,A2,A3)（A4 排除）；bull=max×1.25（上限 current_PE×1.25）；bear=min×0.70

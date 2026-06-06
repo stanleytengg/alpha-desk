@@ -404,7 +404,7 @@ python3 tools/thesis_ledger.py add --ticker <T> --slug <slug> \
 |------|---------|------|
 | A1（市場隱含）| `highlights.pe_ratio` | `== null / 0.0` → 丟棄，標 `(N/A)` |
 | A2（成長合理）| `highlights.peg_ratio × (quarterly_revenue_growth_yoy × 4 或 fwdEPS_growth%)`；AI 龍頭（NVDA/AVGO/CRWD/AMD）目標 PEG 1.5，其餘 1.0 | `== null / 0.0` → 丟棄 |
-| A3（分析師隱含）| `highlights.wall_street_target ÷ fwdEPS`（fwdEPS 從 earnings cache 取 next_quarter_estimate × 4 年化；缺 → 用 `eps_ttm × (1 + growth%)`） | 任一缺 → 丟棄 |
+| A3（分析師隱含）| `highlights.wall_street_target ÷ fwdEPS`。**fwdEPS 來源優先序：** ① `snapshot.forward_estimates.curr_fy.eps_avg`（EODHD 真實賣方共識，當前 FY）→ ② `forward_estimates.next_fy.eps_avg`（次年 FY）→ ③ 保底 `eps_ttm × (1 + growth%)` 近似。cache 已在 `self_valuation.a3_fwdeps_source` 標來源（`consensus_curr_fy`/`consensus_next_fy`/`approx`），直接讀勿重推 | 任一缺 → 丟棄 |
 
 情境指派規則（可重複）：
 - **基準 Fair PE** = median(有效錨點)
@@ -413,9 +413,10 @@ python3 tools/thesis_ledger.py add --ticker <T> --slug <slug> \
 - 僅 1 個有效錨 → 用該錨 ×1.10 / ×0.90，並在備註標 `⚠️ 單錨低信心`
 
 情境 FwdEPS：
-- 基準 = analyst fwdEPS（earnings cache `eps_estimate` 年化）
+- 基準 = analyst 共識 fwdEPS（`forward_estimates.curr_fy.eps_avg`；缺則 next_fy；再缺才用 `eps_ttm×(1+growth)` 近似）
 - 樂觀 = 基準 × (1 + min(avg_surprise_pct, 15%))；avg_surprise_unreliable=true → 直接用 +5%
 - 悲觀 = 基準 × (1 − 5%) [beat_pct≥75%] 否則 × (1 − 10%)
+- **EPS 修正動能（P3 訊號）**：`forward_estimates.{curr_fy,next_fy}` 另帶 `eps_revision_30d_pct` 與 `revisions_up_30d / down_30d`——共識 30 日內上修（up≫down 或 pct>0）= guidance 偏正領先訊號，可在備註或 P3 訊號推導引用（非估值輸入）
 
 **Full tier 輸出表（每持倉一行）：**
 ```
@@ -444,7 +445,7 @@ mcp__fmp-mcp__getDCFValuation(ticker)
 - pe_ratio = 0.0 → `A1: N/A` （CRWD 已知缺口）
 - peg_ratio = 0.0 → `A2: N/A`（CRDO 已知缺口）
 - wall_street_target 缺 → `A3: N/A`
-- fwdEPS 兩種來源都缺 → 整欄標 `(fwdEPS unavailable)`，不輸出公允價
+- fwdEPS 三來源（consensus curr_fy / next_fy / approx）皆缺 → 整欄標 `(fwdEPS unavailable)`，不輸出公允價
 
 ### 9. Sentiment Analysis
 使用 Agent 子代理（subagent_type: "data-collector"）取 top 5 持倉的情緒數據：
