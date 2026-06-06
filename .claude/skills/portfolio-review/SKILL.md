@@ -17,15 +17,26 @@ Generate a comprehensive portfolio report from the user's live brokerage positio
 - 今日 journal 不存在 → 執行 gap-fill + 變動偵測 + 自動建立 journal
 - **0e 第一性原理紀律**：在「下一步建議」之前必須完成「組合層級 thesis / 證偽條件 / 機率分布」三題（見 CLAUDE.md 0e）
 
-## Step 0.5: Macro + Earnings Cache Load
+## Step 0.5: Macro + Earnings + Fundamentals Cache Load
 
-讀以下三份 cache（由 `tools/fetch_macro.py` + `tools/earnings_history.py` 預載）：
+讀以下四份 cache（由各預載腳本維護）：
 - `briefing-out/cache/macro-snapshot.json` — 供 Step 0e 與 probability-honesty-checker Step 1i
 - `briefing-out/cache/earnings-history.json` — 供 Section F Key Alerts、Section G 個股 thesis、及 probability-honesty-checker Step 1d base rate
 - `briefing-out/cache/earnings-dates.json` — 供 Section F earnings window 警示
+- `briefing-out/cache/fundamentals-snapshot.json`（TTL 24h，`tools/fetch_fundamentals.py` 預載）— 供 Section G3.5 三錨點估值、probability-honesty-checker Step 1d/1h
+
+判定 fundamentals cache：
+- `status == "ok"` 且 mtime < 30h → **使用**（Section G3.5 三錨點計算直接取 highlights）
+- `status == "skipped"` / mtime > 30h / 缺失 → 標 `⚠️ Fundamentals cache stale/missing`，派 Agent 即時補抓（同 briefing Deep 模式）：
+  ```
+  Agent(subagent_type="data-collector"):
+    呼叫 mcp__eodhd-mcp__get_fundamentals_snapshot 對所有 >3% 持倉 (TICKER.US)
+    回傳 dict {ticker: {snapshot:{...}, base_rate:{...}}}
+  ```
+- `pe_ratio == 0.0 / null` → 丟棄 A1 錨；`peg_ratio == 0.0 / null` → 丟棄 A2 錨；不猜測
 
 若 macro `status == "skipped"` → Section K 第一性檢查標記 `Macro: unavailable`，probability-honesty-checker 1i 填 unavailable。
-若 cache 過期 > 36h → 加註 `⚠️ cache stale (X h)`。
+若 earnings cache 過期 > 36h → 加註 `⚠️ cache stale (X h)`。
 若 cache 缺某 ticker → Section F 該 ticker earnings 列 `(unavailable)`，prompt 提示手動 `python3 tools/earnings_history.py --force`。
 
 ---
@@ -39,7 +50,20 @@ python3 tools/thesis_ledger.py due      # 取到期清單 + 自動 expire sweep
 ```
 對每筆 `due`：讀 `trigger.metric` → 用 MCP 抓實際數字 → 對照 `thesis`+`falsification` 判 passed/failed/partial → `resolve --next-action`；抓不到新數 → `reschedule` 維持 pending，不猜 verdict。流程細節與規則同 briefing Step 0.7。
 
-在 **Section F Key Alerts 前**輸出「📋 thesis 驗收」表（命題 → 實際 → verdict → actionable），並列出 expired 歸檔清單。驗收結果直接餵「下一步建議」。
+在 **Section F Key Alerts 前**輸出「📋 thesis 驗收」表：
+
+```
+## 📋 thesis 驗收
+| thesis | 命題 | 實際 | verdict | 公允價 before→after | 價格影響 | → actionable |
+|--------|------|------|---------|---------------------|---------|-------------|
+```
+
+`公允價 before→after` 與 `價格影響` 欄：有 resolve 且帶 impact 旗標時填入，reschedule 留空。D2 三桶分解（passed/failed/partial）同 briefing Step 0.7 邏輯：
+- **passed** → D1 三錨點用新數字重算 `fair_value_after`；`price_impact_pct = (after−before)/before`
+- **failed** → 同上但用惡化輸入（成長減速/砍 guide）
+- **partial** → `impact_decomp = "thesis +X%(基本面)/multiple −Z%(re-rate)=net −W%"`
+
+並列出 expired 歸檔清單。驗收結果（含公允價影響）直接餵「下一步建議」。
 
 ---
 
@@ -164,6 +188,34 @@ Flag:
 Use `mcp__yfinance-advanced__get_stock_info` for financial data.
 
 | 標的 | Forward PE | P/S | Revenue Growth | Gross Margin | FCF | Analyst Rating | Target Price | Upside |
+
+**G3.5 三錨點公允價（D1 三角定位，全 >3% 持倉）**
+
+資料：Step 0.5 fundamentals-snapshot.json cache（已預載）
+
+三錨點計算規則（同 briefing Section 8.5，以下為簡化版）：
+
+| 錨點 | 欄位 | 缺值處理 |
+|------|------|---------|
+| A1 市場 PE | `highlights.pe_ratio` | 0.0/null → 標 N/A |
+| A2 PEG 錨 | `peg_ratio × growth%`；AI 龍頭 PEG=1.5，其餘=1.0 | 0.0/null → 標 N/A |
+| A3 分析師錨 | `wall_street_target ÷ fwdEPS` | 任一缺 → 標 N/A |
+| **A4 自建錨** | `self_valuation.own_target_price`（cache 已算） | `unavailable` → `(N/A)`；`low` → `⚠️`；**不進 median** |
+
+情境 FairPE：base=median(A1,A2,A3)（A4 排除）；bull=max×1.25（上限 current_PE×1.25）；bear=min×0.70
+
+輸出表（Full/Deep tier 才出 A4 欄）：
+```
+| 標的 | 現價 | A1 PE | A2 PEG錨 | A3 PT錨 | Fair PE(基/牛/熊) | FwdEPS | 公允價(基/牛/熊) | A4自建目標 | A4vsA3% | 偏離基準% | 備註 |
+|------|------|-------|---------|---------|-----------------|--------|----------------|----------|---------|---------|------|
+```
+
+A4 欄規則：
+- `unavailable` → `(N/A)`；`low` → 顯示數字 + `⚠️`；`ok` → 顯示數字
+- `A4vsA3% = (own_target − wall_street_target) / wall_street_target`
+- |A4vsA3%| > 20% → 備註欄加：「我較 Street 樂觀」/ 「我較 Street 保守」
+
+偏離 > ±30% → 標 `⚠️ 大幅偏離`；偏離 > ±50% → 標 `⚠️⚠️ 異常大偏離，錨點可能失效`
 
 **G4. 近期新聞 (Recent News)**
 Use `mcp__yfinance-advanced__get_yahoo_finance_news` for each major holding.
@@ -302,9 +354,11 @@ Use `mcp__fmp-mcp__getCompanyProfile` only for tickers where yfinance data is in
      1a. RSI 分布: [從 Section G1 / G2 摘出，每 bucket 檔數 + % of port]
      1b. 距 52w 高: [從 Section G3 / get_stock_info 摘出，中位數/最大/最小]
      1c. 已實現波動: 過去 5d/2d/最大單日（從 journal/firstrade）
-     1d. Binary catalysts (30d window): [從 earnings-dates.json + earnings-history.json
-         摘出，**必須含 trailing 8Q beat rate + avg surprise %**，格式
-         「N/8 beat, +X.X% avg」，cache 缺 → 標 (unavailable)]
+     1d. Binary catalysts (30d window): [從 earnings-dates.json 摘出財報日期，
+         **beat rate + avg surprise %** 來源優先順序：
+         (1) fundamentals-snapshot.json → tickers.TICKER.base_rate（EODHD）
+         (2) earnings-history.json → tickers.TICKER（yfinance 備選）
+         格式：「N/8 beat, +X.X% avg」。avg_surprise_unreliable=true → 只用 beat N/8，avg% 標 (unreliable-low-base)；cache 缺 → 標 (unavailable)]
      1e. 集中度: top 1 / top 5 / 最大板塊（從 Section B 板塊分配）
      1f. 板塊輪動曝險: [從 sector_rotation + Section B 計算 leading/lagging 持倉 %]
      1g. Sentiment: 7d/30d 對比（從 Section G5）

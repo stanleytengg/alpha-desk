@@ -179,7 +179,9 @@ def due_theses(data, *, asof=None, expire_after_days=EXPIRE_AFTER_DAYS):
 
 # ── resolve / reschedule ────────────────────────────────────────────────────
 def resolve_thesis(data, *, entry_id, verdict, actual, note, next_action,
-                   asof=None):
+                   asof=None,
+                   fair_value_before=None, fair_value_after=None,
+                   price_impact_pct=None, impact_decomp=None):
     if verdict not in VALID_VERDICTS:
         raise ValueError(f"invalid verdict: {verdict} (use {VALID_VERDICTS})")
     asof = asof or date.today().isoformat()
@@ -188,13 +190,19 @@ def resolve_thesis(data, *, entry_id, verdict, actual, note, next_action,
         return {"action": "not_found", "id": entry_id}
     entry["status"] = verdict
     entry["updated"] = asof
-    entry["history"].append({
+    history_record = {
         "date": asof,
         "verdict": verdict,
         "actual": actual,
         "note": note,
         "next_action": next_action,
-    })
+        # D2 估值影響欄位（選填，有數就存，無則 None）
+        "fair_value_before": fair_value_before,
+        "fair_value_after": fair_value_after,
+        "price_impact_pct": price_impact_pct,
+        "impact_decomp": impact_decomp,
+    }
+    entry["history"].append(history_record)
     return {"action": "resolved", "id": entry["id"], "status": verdict}
 
 
@@ -375,6 +383,15 @@ def _build_parser():
     r.add_argument("--note", default="")
     r.add_argument("--next-action", default="", dest="next_action")
     r.add_argument("--asof", default=None)
+    # Optional valuation-impact fields (D2 三錨點公允價影響)
+    r.add_argument("--fair-value-before", type=float, default=None, dest="fair_value_before",
+                   help="三錨點公允價（resolve 前，EV 快照）")
+    r.add_argument("--fair-value-after", type=float, default=None, dest="fair_value_after",
+                   help="三錨點公允價（resolve 後，thesis 成分已調整）")
+    r.add_argument("--price-impact-pct", type=float, default=None, dest="price_impact_pct",
+                   help="(fair_value_after - fair_value_before) / fair_value_before × 100")
+    r.add_argument("--impact-decomp", default=None, dest="impact_decomp",
+                   help="partial 專用：thesis +X%%/multiple −Z%%=net −W%%")
 
     rs = sub.add_parser("reschedule", help="push a pending thesis's trigger date out")
     rs.add_argument("--id", required=True, dest="entry_id")
@@ -440,7 +457,11 @@ def main(argv=None):
         res = resolve_thesis(
             data, entry_id=args.entry_id, verdict=args.verdict,
             actual=args.actual, note=args.note, next_action=args.next_action,
-            asof=args.asof)
+            asof=args.asof,
+            fair_value_before=args.fair_value_before,
+            fair_value_after=args.fair_value_after,
+            price_impact_pct=args.price_impact_pct,
+            impact_decomp=args.impact_decomp)
         if res["action"] == "not_found":
             _emit(res)
             return EXIT_NOT_FOUND

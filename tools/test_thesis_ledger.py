@@ -408,6 +408,58 @@ class CLI(unittest.TestCase):
         self.assertEqual(s["counts"]["passed"], 1)
         self.assertEqual(s["hit_rate"], 1.0)
 
+    def test_resolve_impact_fields_round_trip(self):
+        """D2 thesis-impact: resolve 帶 4 個 impact 旗標，history 中正確存入並可讀回。
+        舊呼叫（無 impact 旗標）仍 exit 0 且 history 只有 5 鍵（向後相容）。"""
+        self._add()
+
+        # ── 新呼叫：帶完整 impact 旗標 ──────────────────────────────────────
+        proc = self.run_cli(
+            "resolve", "--id", "MU:memory-cycle",
+            "--verdict", "partial",
+            "--actual", "AI revenue +6%，GM 壓縮",
+            "--note", "基本面 OK，多重 GM re-rate",
+            "--next-action", "HOLD，加碼門檻 $350",
+            "--fair-value-before", "460",
+            "--fair-value-after", "415",
+            "--price-impact-pct", "-9.8",
+            "--impact-decomp", "thesis +6%/multiple −16%=net −9.8%",
+            "--asof", "2026-06-26",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        # 讀回 JSON，確認 history[-1] 有 9 鍵
+        with open(self.path) as f:
+            data = json.load(f)
+        entry = next(e for e in data["theses"] if e["id"] == "MU:memory-cycle")
+        self.assertEqual(entry["status"], "partial")
+        h = entry["history"][-1]
+        self.assertEqual(h["verdict"], "partial")
+        self.assertAlmostEqual(h["fair_value_before"], 460.0)
+        self.assertAlmostEqual(h["fair_value_after"], 415.0)
+        self.assertAlmostEqual(h["price_impact_pct"], -9.8)
+        self.assertEqual(h["impact_decomp"], "thesis +6%/multiple −16%=net −9.8%")
+
+    def test_resolve_without_impact_flags_still_exits_zero(self):
+        """向後相容：舊呼叫（無 impact 旗標）exit 0，history 中 4 鍵為 None。"""
+        self._add()
+        proc = self.run_cli(
+            "resolve", "--id", "MU:memory-cycle",
+            "--verdict", "passed",
+            "--actual", "ASP +8%", "--note", "ok", "--next-action", "HOLD",
+            "--asof", "2026-06-26",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        with open(self.path) as f:
+            data = json.load(f)
+        entry = next(e for e in data["theses"] if e["id"] == "MU:memory-cycle")
+        h = entry["history"][-1]
+        self.assertIsNone(h.get("fair_value_before"))
+        self.assertIsNone(h.get("fair_value_after"))
+        self.assertIsNone(h.get("price_impact_pct"))
+        self.assertIsNone(h.get("impact_decomp"))
+
 
 if __name__ == "__main__":
     unittest.main()

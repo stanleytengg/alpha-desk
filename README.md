@@ -5,7 +5,7 @@
 - **使用對象**：自行操作美股/選擇權、想用 LLM 輔助但要求紀律與可驗證性的個人投資人 / quant
 - **輸出語言**：全繁體中文
 - **券商整合**：透過 `firstrade-server` MCP 取即時持倉（以 Firstrade 為參考整合，可替換成你自己的券商 MCP）
-- **資料來源**：7 個 MCP server（即時報價、SEC、技術指標、情緒、預測市場等）+ FRED 總經
+- **資料來源**：7 個 MCP server（即時報價、SEC、技術指標、情緒/基本面、預測市場等）+ FRED 總經 + EODHD 基本面 REST 快取
 - **可選自動化**：launchd 每個 NYSE 交易日定時產生並推送日報到 Telegram + Email
 
 > ⚠️ **非投資建議。** 本專案是分析與紀律工具，所有輸出僅供研究參考；你需自行承擔所有交易決策與風險，並自備所有 API key / 券商憑證。詳見文末免責聲明。
@@ -166,11 +166,12 @@ claude mcp add fmp-mcp --env FMP_API_KEY=xxxx -- node /path/to/fmp-mcp/dist/inde
 | 變數 | 用途 | 取得 |
 |------|------|------|
 | `FRED_API_KEY` | 總經快照（Fed Funds / CPI / 殖利率曲線 / HY OAS / VIX） | [FRED 免費申請](https://fred.stlouisfed.org/docs/api/api_key.html) |
+| `EODHD_API_TOKEN` | 基本面快取（`fetch_fundamentals.py`）：PE/PEG/分析師PT/盈餘 beat rate/季度成長 | [EODHD 申請](https://eodhd.com/financial-apis/)（All-In-One 含 Fundamentals）|
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | 日報推送到 Telegram | `@BotFather` / `getUpdates` |
 | `SMTP_*` / `EMAIL_*` | 日報 email 副本 | Gmail App Password |
 | `BRIEFING_*` / `FRIDAY_CODEX` / `RETRY_MAX` 等 | launchd 自動推送行為 | 見 `.env.example` 註解 |
 
-以上**全部選用**——不設也能用所有互動式 slash command，只是少了自動推送與總經快照。
+以上**全部選用**——不設也能用所有互動式 slash command，只是少了自動推送、總經快照與三錨點估值快取。
 
 ---
 
@@ -266,6 +267,11 @@ DRY_RUN=1 python3 tools/send_briefing.py latest   # Dry-run（不實際發送）
 📊 Sentiment Pulse (EODHD 7d)
   📈 改善: ONTO 1.00, STRL 0.90, AVGO 0.90
   ⚠️ 注意: MU 急降 0.97→0.51
+
+💰 估值 & Thesis
+  📉 最低估: MU vs 公允價 −22%（三錨點中位 $375）
+  📈 最高估: ARM vs 公允價 +38%
+  📋 今日 thesis: AVBO:q2-guide → partial 公允價 $460→$415（−9.8%）
 
 🔄 Sector Rotation
   💪 leading: 半導體 SMH (+34.9% vs SPY)
@@ -369,11 +375,21 @@ launchd (每日 ET 11:30，NYSE 交易日)
 ~/.local/bin/fadacai_briefing_runner.sh   ← TCC-safe wrapper
     ├── check_trading_day.py              ← NYSE 休市日 exit 0
     ├── 週五 → CODEX_FLAG="--codex"
+    ├── [non-fatal] fetch_macro.py        ← FRED 總經快取（TTL 36h）
+    ├── [non-fatal] earnings_history.py   ← yfinance 盈餘快取（TTL 24h）
+    ├── [non-fatal] fetch_fundamentals.py ← EODHD 基本面快取（TTL 24h）；含 A4 自建估值（CAGR→own_fwdEPS→own_target）
+    ├── [non-fatal] fetch_news.py         ← EODHD 新聞全文快取（TTL 6h）；P3 訊號擷取的 body 來源
     └── claude -p "/briefing telegram --send $CODEX_FLAG"
             │
             ▼
         .claude/skills/briefing/SKILL.md (telegram tier)
-            ├── T1-T7: 抓資料（Earnings/Sentiment/News/Rotation/Alerts/待辦/QuickTake）
+            ├── Step 0.65: 讀 fundamentals cache（三錨點估值輸入）
+            ├── T1: Earnings Window（from cache）
+            ├── T2: Sentiment Pulse（EODHD sentiment_trend）
+            ├── T2.5: 💰 估值 & Thesis Pulse（cache 算，signal-only）
+            ├── T3: News & Catalysts
+            ├── T4: Sector Rotation
+            ├── T5-T7: Alerts / 待辦 / QuickTake
             ├── T8a: 寫 briefing-out/YYYY-MM-DD-full.md
             ├── T8b: 寫 briefing-out/YYYY-MM-DD-telegram.txt
             └── tools/send_briefing.py YYYY-MM-DD
@@ -416,7 +432,7 @@ launchd (每日 ET 11:30，NYSE 交易日)
 | **sec-edgar-mcp** | SEC 財報、內部人 Form 4、8-K 事件、XBRL | 官方法規文件 |
 | **fmp-mcp** | 同業比較、市場漲跌排行（Free tier） | 補充數據 |
 | **technical-mcp** | RSI、MACD、布林通道、ATR、動量分數、S/R levels | 技術分析 |
-| **eodhd-mcp** | AI 新聞情緒評分（−1→+1，ticker 格式: AAPL.US） | 情緒分析 |
+| **eodhd-mcp** | **`get_news`**（新聞全文 body/symbols/tags，P3 訊號擷取用）+ AI 情緒分析 + **基本面快照**（PE/PEG/分析師PT/盈餘 beat rate/毛利率/季度成長，7 工具，ticker 格式: AAPL.US）| 情緒分析 + 免費版估值 + 新聞全文 |
 | **polymarket-mcp** | 預測市場事件概率（Demo mode，read-only） | 市場信念數據 |
 
 **MCP Retry Policy：** 失敗 → 重試 3 次 → 健康檢查 → fallback WebSearch/WebFetch，輸出中標記 `⚠️ [server] MCP 不可用`。
@@ -432,8 +448,9 @@ launchd (每日 ET 11:30，NYSE 交易日)
 | `feedback/` | 交易風格規則，所有 skill 每次必讀 | 手動（學習後更新） |
 | `research/` | 個股投資論文（MU 記憶體週期、HDD AI 儲存等） | 手動 |
 | `.env` | Telegram + SMTP 設定（**gitignored**，cp .env.example） | 手動 |
-| `tools/` | Auto-send pipeline：send_briefing.py、check_trading_day.py、briefing_runner.sh | git tracked |
+| `tools/` | Pipeline 腳本：`send_briefing.py`、`check_trading_day.py`、`briefing_runner.sh`、`fetch_macro.py`、`fetch_fundamentals.py`（EODHD 基本面 + A4 自建估值快取）、`fetch_news.py`（EODHD 新聞全文快取，TTL 6h）、`earnings_history.py`、`thesis_ledger.py`、`test_self_valuation.py`（A4 單元測試） | git tracked |
 | `briefing-out/` | 每日 briefing 輸出 + 發送 log（**gitignored**） | 自動生成 |
+| `briefing-out/cache/` | 預載快取：`macro-snapshot.json` / `earnings-history.json` / `earnings-dates.json` / `fundamentals-snapshot.json`（含 A4 `self_valuation`，TTL 24h）/ `news-articles.json`（全文 600-char excerpts，TTL 6h）— **日報 zero-latency 數據層** | 自動（runner + launchd） |
 | `docs/briefing-auto-send.md` | Telegram 設定完整教學 | git tracked |
 | `CLAUDE.md` | 完整專案指令手冊（Step 0 規範、MCP 政策、模型分工） | 手動 |
 
@@ -463,10 +480,15 @@ launchd (每日 ET 11:30，NYSE 交易日)
 
 ## 方法論亮點
 
-這套框架的核心不是「叫 LLM 給意見」，而是用兩層紀律強迫每個結論落在可驗證的 ground truth 上：
+這套框架的核心不是「叫 LLM 給意見」，而是用多層紀律強迫每個結論落在可驗證的 ground truth 上：
 
 - **第一性原理紀律（Step 0e）** — 任何 Verdict 前強制回答三題：① 核心 thesis（1 句**可驗證命題**，非 narrative）② 證偽條件（2-3 個 falsifiable 觀察點）③ 機率分布 + EV（由 `probability-honesty-checker` agent 強制計算，禁用 default bell shape 與「略偏正」這類質性語言）。
+- **三錨點 Fair PE 估值（Section 8.5 / G3.5）** — 不手寫 PE 倍數猜想；用三個獨立錨點做三角定位：A1 市場隱含 PE（EODHD）/ A2 PEG 成長合理倍數 / A3 分析師 PT 隱含 PE。Base = median；Bull = max × 1.25；Bear = min × 0.70。`pe_ratio == 0.0` / `peg_ratio == 0.0` → 自動丟棄該錨，標 `(anchor unavailable)`。
 - **Thesis Ledger（`tools/thesis_ledger.py`）** — 把帶觸發點的 thesis 登錄進帳本，到期（如財報日）自動回頭抓實際數字驗收 passed/failed，累積命中率。詳見 [`docs/thesis-ledger.md`](docs/thesis-ledger.md)。
+- **Thesis 驗證 → 股價影響（D2 三桶分解）** — thesis verdict 不只是分類；`resolve` 時帶結構化旗標：`fair_value_before/after`（三錨點重算）+ `price_impact_pct` + `impact_decomp`（thesis 成分 vs 倍數重估成分分解）。實例：AVBO partial → `thesis +6%(FY27 AI guide 確認)/multiple −16%(GM 壓縮 re-rate)=net −9.8%`。
+- **全持倉基本面快取（`briefing-out/cache/fundamentals-snapshot.json`）** — `fetch_fundamentals.py` 每交易日 launchd 預載，TTL 24h。Quick/Telegram tier 直接讀快取（zero-latency，不等 MCP）；Deep tier 強制刷新。
+- **A4 自建估值錨（sanity / divergence flag）** — `fetch_fundamentals.py` 同次 API call 計算：`own_fwdEPS = 歷史 CAGR (幾何，40% cap → fade 向 8% terminal) × 淨利率 ÷ 股數`（完全不看分析師 estimate）。`own_target_price = own_fwdEPS × base_FairPE(median A1,A2,A3)`。`A4vsA3% = (own_target − wall_street_target) / wall_street_target` 乾淨隔離「我的盈利觀 vs Street 盈利觀」（倍數固定）。**A4 不進 EV**，僅做分歧 flag：`confidence=unavailable`（虧損股 / <3年資料）→ `(self-val N/A)`；`low`（營收 stdev>30%）→ `⚠️低信心`；`ok` → 正常顯示。34 單元測試（`test_self_valuation.py`）覆蓋 CAGR、cap、decel、macro clamp、guardrails。
+- **新聞全文快取 + P3 訊號擷取（`briefing-out/cache/news-articles.json`）** — `fetch_news.py` TTL 6h，top 8 篇/ticker，600-char body excerpt。`mcp__eodhd-mcp__get_news` 工具提供即時全文（1500 char）。Deep tier §9.5 / stock-analysis Step 4b 從 news body + SEC 8-K + 財報逐字稿抽**已量化陳述**（wafer starts / capex / ASP 等），強制附 raw_quote（≤120 字逐字引用），signal → thesis 轉換後以 `--source signal-inference` 登錄 thesis_ledger，閉環追蹤 P3 命中率。反幻覺鎖：**無 raw_quote = 無 signal = 不登錄。**
 
 ## 如何擴展
 

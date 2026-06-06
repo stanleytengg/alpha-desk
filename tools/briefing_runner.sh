@@ -54,6 +54,16 @@ uv run --directory "$SCRIPT_DIR" python3 "$SCRIPT_DIR/earnings_history.py" \
   >> "$LOG_DIR/launchd.log" 2>> "$LOG_DIR/launchd.err" \
   || log "earnings refresh failed (non-fatal, briefing continues with stale/missing cache)"
 
+log "Refreshing fundamentals cache (EODHD)..."
+uv run --directory "$SCRIPT_DIR" python3 "$SCRIPT_DIR/fetch_fundamentals.py" \
+  >> "$LOG_DIR/launchd.log" 2>> "$LOG_DIR/launchd.err" \
+  || log "fundamentals refresh failed (non-fatal, briefing continues with stale/missing cache)"
+
+log "Refreshing news cache (EODHD raw articles)..."
+uv run --directory "$SCRIPT_DIR" python3 "$SCRIPT_DIR/fetch_news.py" \
+  >> "$LOG_DIR/launchd.log" 2>> "$LOG_DIR/launchd.err" \
+  || log "news refresh failed (non-fatal, briefing continues without news cache)"
+
 # ── Invoke Claude CLI ──────────────────────────────────────────────────────
 # Must cd to REPO_ROOT so Claude Code finds .claude/skills/ and project settings
 cd "$REPO_ROOT"

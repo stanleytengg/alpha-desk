@@ -84,6 +84,8 @@ Add `--codex` to any of the above (except `/mcp-health`, `/trade-journal`) to ap
    - 給**機率分布而非單點**（不寫「可能會漲」而是 60% 看多 / 25% 中性 / 15% 看空）
    - 算 expected value：Σ(機率 × 各情境公允價)，與現價比較
    - **強制呼叫 `probability-honesty-checker` agent**（見下方）— 不可手動套機率
+   - **Fair PE 三錨點推導（不可手寫猜測）：** A1=EODHD `pe_ratio`（現行市場隱含）；A2=`peg_ratio×成長率`（成長合理倍數，AI龍頭目標PEG 1.5，其餘 1.0）；A3=`wall_street_target÷forward_EPS`（分析師隱含）。任一錨回 0.0/null → 丟棄。基準Fair PE=median(A1,A2,A3)；樂觀=max 上限current_PE×1.25；悲觀=min 下限current_PE×0.70。Forward EPS：樂觀=base×(1+min(avg_surprise_pct,15%))；悲觀=base×(1−5%~10%)。
+   - **A4 自建錨（sanity/divergence flag，不進 median，不進 EV）：** 從 `fundamentals-snapshot.json self_valuation` 讀取（`tools/fetch_fundamentals.py` 已在 cache 計算）。`own_fwdEPS = projected_revenue × net_margin ÷ shares`，revenue 用歷史 CAGR 淡化向 8% terminal，**完全不看分析師 estimate**。`own_target_price = own_fwdEPS × base_FairPE(median(A1,A2,A3))`。`A4vsA3% = (own_target − wall_street_target) / wall_street_target`——隔離「我的盈利觀 vs Street 盈利觀」（倍數固定）。`confidence=unavailable` → `(self-val N/A)`；`low` → `⚠️低信心（高波動）`；`ok` → 正常顯示。
 
 **為什麼這條重要：**
 - Claude 的分析、Codex 的 adversarial review 都會帶 framing 偏差
@@ -159,6 +161,15 @@ Agent(
 - 逾期 >30 天未驗收 → 自動 `expired`（當作無結果，不算命中率分母）
 - **驗收（每次 briefing / portfolio-review 自動跑）**：`thesis_ledger.py due` → 對到期項抓數判定 → `resolve`；抓不到新數 → `reschedule` 不猜 verdict
 - **登錄（briefing / portfolio-review 收尾）**：`list` 看既有 slug → `add`
+- **Signal-inference 來源**：從 news body / SEC 8-K / 逐字稿抽**已量化陳述**推導的 thesis，登錄時加 `--source signal-inference --ev "signal: <metric> <value>, <source>, conf=<confidence>"`。僅 `confidence ∈ {high, medium}` 且有明確前瞻 trigger + 強制 `raw_quote`（≤120 字逐字）才登錄；`low` 只在文字呈現。`stats --source signal-inference` 可量測新聞推導命中率（閉環驗證 P3 價值）。反幻覺鎖：無 raw_quote = 無 signal = 不登錄。
+- **Resolve 附加估值影響欄位（選填，有數就帶）：**
+  ```
+  python3 tools/thesis_ledger.py resolve --id <id> --verdict passed|failed|partial \
+    --actual "實際數字" --note "判讀" --next-action "操作" \
+    --fair-value-before <float> --fair-value-after <float> \
+    --price-impact-pct <float> --impact-decomp "thesis +X%/multiple −Z%=net −W%"
+  ```
+  passed→公允價上修（recompute D1 三錨點）；failed→下修；partial→拆分 thesis 成分 vs 倍數成分（impact_decomp）。數字存入 history[]，long-term queryable via stats。
 - 詳見 `docs/thesis-ledger.md`
 
 ## Auto Journal Detection（SessionStart Hook）
@@ -188,9 +199,14 @@ Agent(
 - `mcp__polymarket-mcp__*` — prediction market probabilities (demo mode, read-only)
   - `search_markets(query)` — search for events by keyword
   - `get_trending_markets()` — trending prediction markets
-- `mcp__eodhd-mcp__*` — sentiment analysis from EODHD (ticker format: "AAPL.US")
+- `mcp__eodhd-mcp__*` — EODHD financial data (ticker format: "AAPL.US"; needs session restart after server.py changes to pick up new tools)
+  - `get_news(ticker, days, limit)` — **raw news articles with full body** (up to 1500 chars content), symbols[], tags[], sentiment. Use when you need article body for P3 signal extraction (wafer starts, capex, ASP data). Distinct from get_news_sentiment which discards body/symbols/tags. Also cached daily by `tools/fetch_news.py` → `briefing-out/cache/news-articles.json` (TTL 6h, top 8 articles/ticker, 600-char excerpts).
   - `get_news_sentiment(ticker, days, limit)` — news with AI sentiment scores
   - `get_sentiment_trend(ticker, days)` — aggregated daily sentiment trajectory (-1 to +1)
+  - `get_fundamentals_snapshot(ticker)` — **one-call valuation bundle**: PE/PEG/margins/ROE/eps_ttm/revenue_ttm/qtrly growth YoY/wall_street_target/analyst_ratings/52w/beta/SMA. **Free-tier-safe substitute for 402-gated fmp ratios/PT endpoints.** Known data gaps: pe_ratio=0.0/peg=0.0 → drop that anchor. ticker format: "MU.US"
+  - `get_earnings_history(ticker, quarters)` — trailing 8Q EPS beat base-rate: `{beat_pct, avg_surprise_pct, beats, quarters_counted}` + next_earnings. **Primary source for probability-honesty-checker Step 1d.** Caveat: avg_surprise_pct unreliable for low-EPS-base stocks (AMD shows +152% artifact — use beat COUNT, not avg%); cross-check vs local earnings-history.json cache
+  - `get_economic_calendar(from_date, to_date, country, high_impact_only, limit)` — CPI/NFP/FOMC/PCE with forecast vs previous vs actual. `high_impact_only=True` for macro catalysts. country="US" (2-letter); feeds probability-honesty-checker Step 1i forward catalyst dates
+  - `get_macro_indicator(country, indicator, limit)` — annual macro time series (inflation_consumer_prices_annual, real_interest_rate, gdp_growth_annual…). country="USA" (3-letter). **Annual/lagged — regime context only, not high-frequency signals**
 - Use parallel agent dispatch for batch data fetching across multiple tickers
 
 ## MCP Retry & Fallback Policy

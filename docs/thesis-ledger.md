@@ -100,6 +100,72 @@ python3 tools/thesis_ledger.py stats [--ticker MU] [--source briefing] [--since 
 - **portfolio-review**：`Step 0.6` 驗收 + 收尾登錄
 - 兩者共用同一帳本與工具；briefing 是保證每日的驗收引擎
 
+## Source 分類 + `signal-inference` 慣例
+
+`--source` 欄位記錄 thesis 來自哪個 skill / 流程：
+
+| source | 說明 |
+|--------|------|
+| `briefing` | 由每日 briefing skill 登錄（Section 8 / Step 0.7） |
+| `portfolio-review` | 由組合審查登錄（Step 0.6） |
+| `stock-analysis` | 由個股深度分析登錄（Step 4a writer） |
+| `signal-inference` | **由訊號推導登錄**（news body / SEC 8-K / 逐字稿量化信號 → thesis 轉換） |
+
+### `signal-inference` 流程 + 反幻覺規則
+
+這是 P3 新增的來源，用於從高頻資料（新聞全文、8-K、逐字稿）推導 thesis 候選，補上財報間隙的訊號。
+
+**必要欄位：**
+- `--source signal-inference`
+- `--ev "signal: <metric> <value>, <source>, conf=<confidence>"` — 暫存訊號來源 provenance
+  - 例：`--ev "signal: wafer_starts +8% QoQ, Reuters/EODHD 2026-06-04, conf=medium"`
+
+**反幻覺鎖（不可繞過）：**
+- 每個訊號必須有 `raw_quote`（≤120 字逐字原文引用）存在**源文件**中，才成立
+- 無 raw_quote → 無 signal → 不登錄（在 briefing/stock-analysis 文字呈現即可）
+- 僅 `confidence ∈ {high, medium}` 且有明確前瞻 trigger 才登錄；`low` 不登錄
+
+**Signal → Thesis 轉換模板：**
+```
+SIGNAL: {ticker} {metric} {value} ({direction})
+  來源: {source_url/desc}, source_type={sec_8k|transcript|news}, 日期={date}
+  confidence: {high|medium|low}
+  raw_quote: "<逐字 ≤120字>"
+
+→ THESIS (1句可驗證命題):
+  "{ticker} {metric} {value} 預示 {forward_condition}"
+
+→ FALSIFY (2-3個):
+  1. "{量化觀察點}"
+  2. "{量化觀察點}"
+  3. "{量化觀察點}"（選填）
+
+→ TRIGGER: type=event|date, date=YYYY-MM-DD, metric="{到期要比的指標}"
+```
+
+**CLI 範例（signal-inference 登錄）：**
+```bash
+# 先查既有 slug 避免碰撞
+python3 tools/thesis_ledger.py list --ticker MU
+
+python3 tools/thesis_ledger.py add --ticker MU --slug wafer-starts-bit-growth \
+  --thesis "MU 投片量 +8% QoQ 預示 FY27 bit 出貨 YoY >25% 且 DRAM ASP 不跌破 -5% QoQ" \
+  --falsification "下季 bit shipment YoY <25%" "DRAM ASP QoQ <-5%" "guide 下修 >10%" \
+  --trigger-type event --trigger-date 2026-09-25 --event earnings \
+  --metric "bit shipment YoY + DRAM ASP QoQ" \
+  --source signal-inference \
+  --ev "signal: wafer_starts +8% QoQ, Reuters/EODHD 2026-06-04, conf=medium"
+```
+
+**命中率追蹤（閉環驗證 P3 是否真有價值）：**
+```bash
+# 查 signal-inference 來源的所有 thesis + 命中率
+python3 tools/thesis_ledger.py stats --source signal-inference
+
+# 查特定 ticker 的 signal-inference thesis
+python3 tools/thesis_ledger.py list --ticker MU --status pending
+```
+
 ## 驗收流程（Claude 端）
 
 1. `due` 取今日到期清單（工具同時自動把逾期 >30 天的轉 `expired`）
