@@ -2,7 +2,7 @@
 name: todo
 description: "生成下一個交易日的優先行動清單。當用戶問「明天開盤要做什麼」、「今天要操作什麼」、「給我待辦」、「接下來要做什麼」、「有什麼需要處理」等問題時立刻使用此 skill。也適用於盤中（「現在有什麼要做」）和盤後（「今天還有什麼沒做」）場景。不要等用戶說 /todo 才觸發，只要問的是「下一步行動」的問題就應該用。"
 user_invocable: true
-model: claude-sonnet-4-6
+model: Codex-sonnet-4-6
 ---
 
 # Portfolio Action Todo
@@ -11,7 +11,7 @@ model: claude-sonnet-4-6
 
 ## 資料讀取順序
 
-### Step 0：CLAUDE.md 統一規範（含 0e 第一性原理紀律）
+### Step 0：AGENTS.md 統一規範（含 0e 第一性原理紀律）
 執行 0a → 0b → 0c → 0d → **0e**。每個 🔴/🟡/🟢 行動項目都必須通過第一性檢查（thesis / 證偽條件 / 機率），否則該項應移到「⏸ 不動」並註明缺乏明確 thesis。
 
 ### Step 1：取得即時持倉（必做）
@@ -112,9 +112,9 @@ model: claude-sonnet-4-6
 
 ### B1. 獨立第一性分析（預設，independent first-principles）
 
-**核心原則：Codex 不看 Claude 的行動清單**（不給 🔴/🟡/🟢 分級與排序），只給 raw 持倉 + 計畫 ⏳ 項目 + 市場數據，讓它獨立排今日 priorities。Claude 與 Codex 兩個獨立輸出並排比較。
+**核心原則：Codex 不看 Codex 的行動清單**（不給 🔴/🟡/🟢 分級與排序），只給 raw 持倉 + 計畫 ⏳ 項目 + 市場數據，讓它獨立排今日 priorities。Codex 與 Codex 兩個獨立輸出並排比較。
 
-呼叫 Codex（**用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI；勿用 codex:codex-rescue subagent / `/codex:rescue`，會卡 superpowers preamble**），prompt 首行加強制 no-tool 指令，模板：
+呼叫 Codex（`subagent_type: "codex:codex-rescue"`），prompt 模板：
 
 ```
 我是一名美股投資人，使用 Level 2 options + Spread 的 margin 帳戶。
@@ -147,7 +147,7 @@ model: claude-sonnet-4-6
 **規則：**
 - 必須講股數/口數
 - 觸發條件必須 falsifiable
-- 不假設 Claude 已說過什麼
+- 不假設 Codex 已說過什麼
 
 請以繁體中文回覆，控制在 700 字內。
 
@@ -156,7 +156,7 @@ model: claude-sonnet-4-6
 
 ### B2. 機會掃描（opportunity scout）
 
-呼叫 Codex（用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI）：
+呼叫 `/codex:rescue`：
 
 ```
 我目前的美股持倉（含市值占比）：
@@ -178,11 +178,11 @@ model: claude-sonnet-4-6
 
 ### B3. 輪動分析（rotation scan）
 
-**Step 1 — Claude 預先收集數據：**
+**Step 1 — Codex 預先收集數據：**
 - `mcp__technical-mcp__get_sector_rotation()` → 全板塊 ETF 相對強度 vs SPY（leading / improving / weakening / lagging）
 - `mcp__technical-mcp__get_batch_indicators(tickers=[所有持倉])` → 個股動能分數 + 趨勢
 
-**Step 2 — 呼叫 Codex（用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI）：**
+**Step 2 — 呼叫 `/codex:rescue`：**
 
 ```
 我的美股持倉（含市值占比 + 板塊歸屬）：
@@ -221,14 +221,14 @@ model: claude-sonnet-4-6
 **Codex 不該做：** [...]
 **Codex Verdict：** [...]
 
-#### 並排比較：Claude vs Codex（獨立排序）
+#### 並排比較：Codex vs Codex（獨立排序）
 
-| 項目 | Claude 排序 | Codex 排序 | 一致性 |
+| 項目 | Codex 排序 | Codex 排序 | 一致性 |
 |------|------------|-----------|--------|
-| #1 操作 | [Claude] | [Codex] | 同 / 異 |
-| #2 操作 | [Claude] | [Codex] | 同 / 異 |
-| #3 操作 | [Claude] | [Codex] | 同 / 異 |
-| Verdict | [Claude] | [Codex] | 同 / 異 |
+| #1 操作 | [Codex] | [Codex] | 同 / 異 |
+| #2 操作 | [Codex] | [Codex] | 同 / 異 |
+| #3 操作 | [Codex] | [Codex] | 同 / 異 |
+| Verdict | [Codex] | [Codex] | 同 / 異 |
 
 **真實共識 priorities**（兩邊都排前 3 的）：[1-3 條 — 高信心今天做]
 **真實分歧**（排序差很多的）：[1-3 條 — 值得深入]
@@ -240,8 +240,8 @@ model: claude-sonnet-4-6
 [B3 Codex 完整回覆]
 
 ---
-**值得追蹤的新機會：** [從 B2 挑 1-2 個 Claude 也認同的]
-**輪動 actionable：** [從 B3 挑 1-2 條 Claude 也認同的調倉操作]
+**值得追蹤的新機會：** [從 B2 挑 1-2 個 Codex 也認同的]
+**輪動 actionable：** [從 B3 挑 1-2 條 Codex 也認同的調倉操作]
 ```
 
 ### 進階：`--codex-adversarial`（opt-in 壓力測試）

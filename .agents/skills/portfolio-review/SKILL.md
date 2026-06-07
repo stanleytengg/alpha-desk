@@ -2,7 +2,7 @@
 name: portfolio-review
 description: Fetch live brokerage positions and generate a comprehensive portfolio report with sector allocation, P&L analysis, options summary, and risk assessment. Use when user asks for portfolio review.
 user_invocable: true
-model: claude-opus-4-7
+model: Codex-opus-4-7
 ---
 
 # Portfolio Review
@@ -11,32 +11,21 @@ Generate a comprehensive portfolio report from the user's live brokerage positio
 
 ## Step 0: 配置同步 & 倉位偵測
 
-執行 CLAUDE.md 的 Step 0 統一規範（0a → 0b → 0c → 0d → **0e**）。
+執行 AGENTS.md 的 Step 0 統一規範（0a → 0b → 0c → 0d → **0e**）。
 - 讀 `plan.md` + `feedback/*.md`（必做）；在後續分析中引用板塊目標與策略佇列
 - 呼叫 `get_account_position` 取即時持倉
 - 今日 journal 不存在 → 執行 gap-fill + 變動偵測 + 自動建立 journal
-- **0e 第一性原理紀律**：在「下一步建議」之前必須完成「組合層級 thesis / 證偽條件 / 機率分布」三題（見 CLAUDE.md 0e）
+- **0e 第一性原理紀律**：在「下一步建議」之前必須完成「組合層級 thesis / 證偽條件 / 機率分布」三題（見 AGENTS.md 0e）
 
-## Step 0.5: Macro + Earnings + Fundamentals Cache Load
+## Step 0.5: Macro + Earnings Cache Load
 
-讀以下四份 cache（由各預載腳本維護）：
+讀以下三份 cache（由 `tools/fetch_macro.py` + `tools/earnings_history.py` 預載）：
 - `briefing-out/cache/macro-snapshot.json` — 供 Step 0e 與 probability-honesty-checker Step 1i
 - `briefing-out/cache/earnings-history.json` — 供 Section F Key Alerts、Section G 個股 thesis、及 probability-honesty-checker Step 1d base rate
 - `briefing-out/cache/earnings-dates.json` — 供 Section F earnings window 警示
-- `briefing-out/cache/fundamentals-snapshot.json`（TTL 24h，`tools/fetch_fundamentals.py` 預載）— 供 Section G3.5 三錨點估值、probability-honesty-checker Step 1d/1h
-
-判定 fundamentals cache：
-- `status == "ok"` 且 mtime < 30h → **使用**（Section G3.5 三錨點計算直接取 highlights）
-- `status == "skipped"` / mtime > 30h / 缺失 → 標 `⚠️ Fundamentals cache stale/missing`，派 Agent 即時補抓（同 briefing Deep 模式）：
-  ```
-  Agent(subagent_type="data-collector"):
-    呼叫 mcp__eodhd-mcp__get_fundamentals_snapshot 對所有 >3% 持倉 (TICKER.US)
-    回傳 dict {ticker: {snapshot:{...}, base_rate:{...}}}
-  ```
-- `pe_ratio == 0.0 / null` → 丟棄 A1 錨；`peg_ratio == 0.0 / null` → 丟棄 A2 錨；不猜測
 
 若 macro `status == "skipped"` → Section K 第一性檢查標記 `Macro: unavailable`，probability-honesty-checker 1i 填 unavailable。
-若 earnings cache 過期 > 36h → 加註 `⚠️ cache stale (X h)`。
+若 cache 過期 > 36h → 加註 `⚠️ cache stale (X h)`。
 若 cache 缺某 ticker → Section F 該 ticker earnings 列 `(unavailable)`，prompt 提示手動 `python3 tools/earnings_history.py --force`。
 
 ---
@@ -50,20 +39,7 @@ python3 tools/thesis_ledger.py due      # 取到期清單 + 自動 expire sweep
 ```
 對每筆 `due`：讀 `trigger.metric` → 用 MCP 抓實際數字 → 對照 `thesis`+`falsification` 判 passed/failed/partial → `resolve --next-action`；抓不到新數 → `reschedule` 維持 pending，不猜 verdict。流程細節與規則同 briefing Step 0.7。
 
-在 **Section F Key Alerts 前**輸出「📋 thesis 驗收」表：
-
-```
-## 📋 thesis 驗收
-| thesis | 命題 | 實際 | verdict | 公允價 before→after | 價格影響 | → actionable |
-|--------|------|------|---------|---------------------|---------|-------------|
-```
-
-`公允價 before→after` 與 `價格影響` 欄：有 resolve 且帶 impact 旗標時填入，reschedule 留空。D2 三桶分解（passed/failed/partial）同 briefing Step 0.7 邏輯：
-- **passed** → D1 三錨點用新數字重算 `fair_value_after`；`price_impact_pct = (after−before)/before`
-- **failed** → 同上但用惡化輸入（成長減速/砍 guide）
-- **partial** → `impact_decomp = "thesis +X%(基本面)/multiple −Z%(re-rate)=net −W%"`
-
-並列出 expired 歸檔清單。驗收結果（含公允價影響）直接餵「下一步建議」。
+在 **Section F Key Alerts 前**輸出「📋 thesis 驗收」表（命題 → 實際 → verdict → actionable），並列出 expired 歸檔清單。驗收結果直接餵「下一步建議」。
 
 ---
 
@@ -188,35 +164,6 @@ Flag:
 Use `mcp__yfinance-advanced__get_stock_info` for financial data.
 
 | 標的 | Forward PE | P/S | Revenue Growth | Gross Margin | FCF | Analyst Rating | Target Price | Upside |
-
-**G3.5 三錨點公允價（D1 三角定位，全 >3% 持倉）**
-
-資料：Step 0.5 fundamentals-snapshot.json cache（已預載）
-
-三錨點計算規則（同 briefing Section 8.5，以下為簡化版）：
-
-| 錨點 | 欄位 | 缺值處理 |
-|------|------|---------|
-| A1 市場 PE | `highlights.pe_ratio` | 0.0/null → 標 N/A |
-| A2 PEG 錨 | `peg_ratio × growth%`；AI 龍頭 PEG=1.5，其餘=1.0 | 0.0/null → 標 N/A |
-| A3 分析師錨 | `wall_street_target ÷ fwdEPS`；fwdEPS 來源優先序 `forward_estimates.curr_fy.eps_avg`（真實共識）→ `next_fy.eps_avg` → `eps_ttm×(1+growth)` 近似（cache `self_valuation.a3_fwdeps_source` 已標來源）| 任一缺 → 標 N/A |
-| **A4 自建錨** | `self_valuation.own_target_price`（cache 已算） | `unavailable` → `(N/A)`；`low` → `⚠️`；**不進 median** |
-
-情境 FairPE：base=median(A1,A2,A3)（A4 排除）；bull=max×1.25（上限 current_PE×1.25）；bear=min×0.70
-
-輸出表（Full/Deep tier 才出 A4 欄）：
-```
-| 標的 | 現價 | A1 PE | A2 PEG錨 | A3 PT錨 | Fair PE(基/牛/熊) | FwdEPS | 公允價(基/牛/熊) | A4自建目標 | A4vsA3% | 偏離基準% | 備註 |
-|------|------|-------|---------|---------|-----------------|--------|----------------|----------|---------|---------|------|
-```
-
-A4 欄規則：
-- `unavailable` → `(N/A)`；`low` → 顯示數字 + `⚠️`；`ok` → 顯示數字
-- `A4vsA3% = (own_target − wall_street_target) / wall_street_target`
-- |A4vsA3%| > 20% → 備註欄加：「我較 Street 樂觀」/ 「我較 Street 保守」
-- **EPS 修正動能（備註欄）**：讀 `forward_estimates.curr_fy`，`revisions_up_30d ≫ down_30d` 或 `eps_revision_30d_pct > 0` → 標 `共識上修↑`（guidance 偏正領先訊號）；反之 `共識下修↓`。僅 flag，非估值輸入
-
-偏離 > ±30% → 標 `⚠️ 大幅偏離`；偏離 > ±50% → 標 `⚠️⚠️ 異常大偏離，錨點可能失效`
 
 **G4. 近期新聞 (Recent News)**
 Use `mcp__yfinance-advanced__get_yahoo_finance_news` for each major holding.
@@ -355,11 +302,9 @@ Use `mcp__fmp-mcp__getCompanyProfile` only for tickers where yfinance data is in
      1a. RSI 分布: [從 Section G1 / G2 摘出，每 bucket 檔數 + % of port]
      1b. 距 52w 高: [從 Section G3 / get_stock_info 摘出，中位數/最大/最小]
      1c. 已實現波動: 過去 5d/2d/最大單日（從 journal/firstrade）
-     1d. Binary catalysts (30d window): [從 earnings-dates.json 摘出財報日期，
-         **beat rate + avg surprise %** 來源優先順序：
-         (1) fundamentals-snapshot.json → tickers.TICKER.base_rate（EODHD）
-         (2) earnings-history.json → tickers.TICKER（yfinance 備選）
-         格式：「N/8 beat, +X.X% avg」。avg_surprise_unreliable=true → 只用 beat N/8，avg% 標 (unreliable-low-base)；cache 缺 → 標 (unavailable)]
+     1d. Binary catalysts (30d window): [從 earnings-dates.json + earnings-history.json
+         摘出，**必須含 trailing 8Q beat rate + avg surprise %**，格式
+         「N/8 beat, +X.X% avg」，cache 缺 → 標 (unavailable)]
      1e. 集中度: top 1 / top 5 / 最大板塊（從 Section B 板塊分配）
      1f. 板塊輪動曝險: [從 sector_rotation + Section B 計算 leading/lagging 持倉 %]
      1g. Sentiment: 7d/30d 對比（從 Section G5）
@@ -415,9 +360,9 @@ Use `mcp__fmp-mcp__getCompanyProfile` only for tickers where yfinance data is in
 
 ### B1. 獨立第一性分析（預設，independent first-principles）
 
-**核心原則：Codex 不看 Claude 的 Sections A–I 結論**，只給 raw portfolio data，讓它獨立評估組合健康度與調倉優先序。Claude 與 Codex 兩個獨立輸出並排比較。
+**核心原則：Codex 不看 Codex 的 Sections A–I 結論**，只給 raw portfolio data，讓它獨立評估組合健康度與調倉優先序。Codex 與 Codex 兩個獨立輸出並排比較。
 
-呼叫 Codex（**用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI；勿用 codex:codex-rescue subagent / `/codex:rescue`，會卡 superpowers preamble**），prompt 首行加強制 no-tool 指令，模板：
+呼叫 Codex（`subagent_type: "codex:codex-rescue"`），prompt 模板：
 
 ```
 我是一名美股投資人，使用 Level 2 options + Spread 的 margin 帳戶。
@@ -441,24 +386,15 @@ Use `mcp__fmp-mcp__getCompanyProfile` only for tickers where yfinance data is in
 
 2. **3 個最大結構性風險**（具體量化 — 例如「單一個股 X 占 12.5% 超過 10% 警戒」「板塊 Y 與 Z 高度相關，組合 beta 1.7」）
 
-3. **機率分布表（未來 30 天組合表現）— ⚠️ 嚴禁偷懶，必照 5 步推導：**
+3. **機率分布表（未來 30 天組合表現）：**
 
-   ❌ **禁用 default mirror shape**：25/50/25、30/45/25、35/45/20、20/45/35（無依據時一律禁止）
-   ❌ 禁質性語言（「略偏正」「應該會」「中性偏多」）
-   照以下 5 步，**每步都要寫出來**，不可直接跳到機率：
-   (a) **Input Enumeration**：列 9 項 — RSI 分布 / 距 52w 高 / 已實現波動(5d,2d,單日) / binary catalysts + 各自 base rate / 集中度 / 板塊輪動 / sentiment / thesis 健康度 / macro。缺項不可進下一步。
-   (b) **形狀反推**：起點 33/34/33，再依事實逐條 nudge（mean reversion 引力、binary catalyst → 雙峰非 bell、集中度、weakening 板塊、macro 左尾），每條調整寫 ±Xpp 與理由。不可直接寫結果。
-   (c) **各情境 conditional 機率**：每個 catalyst 顯式 base rate（例：「MU 8/8 beat → blowout 機率 55%」）。
-   (d) **三情境合成**：sum = 100%（顯式 check）。
-   (e) **EV = Σ(機率 × 中點)**：中點 = 報酬區間算術平均（例 +10~+15% → +12.5%）。
+   | 情境 | 機率 | 觸發條件 | 組合預期 % |
+   |------|------|---------|-----------|
+   | 樂觀 | XX% | [條件] | +X% |
+   | 基準 | XX% | [條件] | ±X% |
+   | 悲觀 | XX% | [條件] | -X% |
 
-   | 情境 | 機率 | 觸發條件(含 base rate) | 報酬區間 | 中點 | 機率×中點 |
-   |------|------|---------|---------|------|----------|
-   | 樂觀 | XX% | [條件] | +X~+Y% | +Z% | +A% |
-   | 基準 | XX% | [條件] | ... | ... | ... |
-   | 悲觀 | XX% | [條件] | -X~-Y% | -Z% | -A% |
-
-   Expected Value = Σ(機率 × 中點) = **±X%**（顯式數字，非文字）
+   Expected Value = Σ(機率 × %) = ±X%
 
 4. **3 個 actionable 調倉建議**（含口數 / 理由 / conditional）：
    - 操作 1：[減 / 加 / 換] 多少股 [標的]，理由 [...]
@@ -468,7 +404,7 @@ Use `mcp__fmp-mcp__getCompanyProfile` only for tickers where yfinance data is in
 5. **Verdict**（1 句）：組合需要 重大調整 / 微調 / 維持，conditional 在什麼前提。
 
 **規則：**
-- 不假設 Claude 已說過什麼
+- 不假設 Codex 已說過什麼
 - 用客觀數據與你自己的 mental model
 - 機率分布必須 sum 到 100%
 - 調倉建議必須講股數/口數
@@ -480,7 +416,7 @@ Use `mcp__fmp-mcp__getCompanyProfile` only for tickers where yfinance data is in
 
 ### B2. 機會掃描（opportunity scout）
 
-呼叫 Codex（用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI）：
+呼叫 `/codex:rescue`：
 
 ```
 我目前的美股持倉（含市值占比）：
@@ -502,11 +438,11 @@ Use `mcp__fmp-mcp__getCompanyProfile` only for tickers where yfinance data is in
 
 ### B3. 輪動分析（rotation scan）
 
-**Step 1 — Claude 預先收集數據：**
+**Step 1 — Codex 預先收集數據：**
 - `mcp__technical-mcp__get_sector_rotation()` → 全板塊 ETF 相對強度 vs SPY（leading / improving / weakening / lagging）
 - `mcp__technical-mcp__get_batch_indicators(tickers=[所有持倉])` → 個股動能分數 + 趨勢
 
-**Step 2 — 呼叫 Codex（用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI）：**
+**Step 2 — 呼叫 `/codex:rescue`：**
 
 ```
 我的美股持倉（含市值占比 + 板塊歸屬）：
@@ -548,15 +484,15 @@ Use `mcp__fmp-mcp__getCompanyProfile` only for tickers where yfinance data is in
 
 ---
 
-#### 並排比較：Claude vs Codex（獨立輸出）
+#### 並排比較：Codex vs Codex（獨立輸出）
 
-| 維度 | Claude | Codex | 一致性 |
+| 維度 | Codex | Codex | 一致性 |
 |------|--------|-------|--------|
-| 健康度 thesis | [Claude] | [Codex] | 一致 / 部分 / 顯著 |
-| 最大風險 #1 | [Claude] | [Codex] | 同 / 異 |
+| 健康度 thesis | [Codex] | [Codex] | 一致 / 部分 / 顯著 |
+| 最大風險 #1 | [Codex] | [Codex] | 同 / 異 |
 | EV (30d) | ±X% | ±X% | 差 X% |
-| 主要調倉建議 | [Claude] | [Codex] | 同 / 異 |
-| Verdict | [Claude] | [Codex] | 同 / 異 |
+| 主要調倉建議 | [Codex] | [Codex] | 同 / 異 |
+| Verdict | [Codex] | [Codex] | 同 / 異 |
 
 **真實共識**（兩邊都認同）：[1-2 條 — 高信心]
 **真實分歧**（兩邊得出不同結論）：[1-3 條 — 值得深入]
@@ -568,8 +504,8 @@ Use `mcp__fmp-mcp__getCompanyProfile` only for tickers where yfinance data is in
 [B3 Codex 完整回覆]
 
 ---
-**值得追蹤的新機會：** [從 B2 挑 1-2 個 Claude 也認同的]
-**輪動 actionable：** [從 B3 挑 1-2 條 Claude 也認同的調倉操作]
+**值得追蹤的新機會：** [從 B2 挑 1-2 個 Codex 也認同的]
+**輪動 actionable：** [從 B3 挑 1-2 條 Codex 也認同的調倉操作]
 ```
 
 ### 進階：`--codex-adversarial`（opt-in 壓力測試）
