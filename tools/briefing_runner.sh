@@ -6,6 +6,13 @@
 
 set -euo pipefail
 
+# Report/log/trading-day timestamps stay on US market time (ET).
+# NOTE: TZ lives here, NOT in the plist's EnvironmentVariables — keeping it out
+# of the plist means launchd's StartCalendarInterval is evaluated in the system
+# local timezone (CET/CEST), so the job fires at the wall-clock time we set.
+: "${TZ:=America/New_York}"
+export TZ
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 LOG_DIR="$REPO_ROOT/briefing-out"
