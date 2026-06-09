@@ -2,7 +2,7 @@
 name: stock-analysis
 description: Analyze a stock ticker with fundamentals, technicals, analyst ratings, and investment thesis. Usage - /stock-analysis TICKER or /stock-analysis TICKER1 TICKER2 for comparison.
 user_invocable: true
-model: claude-sonnet-4-6
+model: claude-fable-5
 ---
 
 # Stock Analysis

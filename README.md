@@ -43,12 +43,13 @@ flowchart TD
     end
 
     subgraph Models ["🤖 AI Model 分流（Cost Optimization）"]
-        HAIKU["🟡 Haiku 4.5<br/>data-collector subagent<br/>純 MCP 數據收集<br/>stateless · no synthesis"]
-        SONNET["🔵 Sonnet 4.6<br/>日常分析合成<br/>briefing quick+full+telegram<br/>stock-analysis · options"]
-        OPUS["🔴 Opus 4.7<br/>深度推理合成<br/>briefing deep<br/>portfolio-review · 長 context"]
+        HAIKU["🟡 Haiku 4.5<br/>data-collector subagent<br/>mcp-health · trade-journal log<br/>純機械 · no synthesis"]
+        SONNET["🔵 Sonnet 4.6<br/>日常分析合成<br/>briefing quick+telegram<br/>todo · journal review"]
+        OPUS["🟠 Opus 4.8<br/>中等深度合成<br/>briefing full<br/>options-strategy"]
+        FABLE["🔴 Fable 5<br/>最強旗艦 · 重推理<br/>portfolio-review · ev-check<br/>briefing deep · stock-analysis<br/>長 context · 機率/EV"]
     end
 
-    s0e --> SONNET & OPUS
+    s0e --> SONNET & OPUS & FABLE
     Skills -->|"subagent_type: data-collector"| HAIKU
 
     subgraph MCP ["🔌 7 MCP Servers — 外部即時數據"]
