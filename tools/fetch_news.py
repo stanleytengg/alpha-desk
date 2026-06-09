@@ -72,11 +72,10 @@ def load_env() -> None:
 TICKER_RE = re.compile(r"^\|\s*([A-Z]{1,5})\s*\|")
 
 
-def latest_journal() -> Path | None:
+def journals_newest_first() -> list[Path]:
     if not JOURNAL_DIR.exists():
-        return None
-    files = sorted(JOURNAL_DIR.glob("[0-9]*-[0-9]*-[0-9]*.md"))
-    return files[-1] if files else None
+        return []
+    return sorted(JOURNAL_DIR.glob("[0-9]*-[0-9]*-[0-9]*.md"), reverse=True)
 
 
 def parse_journal_tickers(path: Path) -> list[str]:
@@ -104,19 +103,26 @@ def parse_journal_tickers(path: Path) -> list[str]:
 
 
 def get_tickers() -> list[str]:
-    journal = latest_journal()
-    if journal:
+    # Walk journals newest→oldest until one yields a holdings snapshot.
+    # /briefing's auto-created journals are often delta-only (no 持倉快照
+    # table), so the newest file frequently parses to zero tickers — fall back
+    # to the most recent journal that actually has the snapshot instead of
+    # dropping straight to the env/empty path.
+    journals = journals_newest_first()
+    for idx, journal in enumerate(journals):
         ts = parse_journal_tickers(journal)
         if ts:
-            print(f"📋 tickers from {journal.name}: {len(ts)} found")
+            note = "" if idx == 0 else f" (skipped {idx} newer journal(s) w/o snapshot)"
+            print(f"📋 tickers from {journal.name}: {len(ts)} found{note}")
             return ts
-        print(f"⚠️  no tickers parsed from {journal.name}")
+    if journals:
+        print(f"⚠️  no snapshot table in any of {len(journals)} journal(s)")
     env_tickers = os.environ.get("NEWS_TICKERS", "").strip()
     if env_tickers:
         ts = [s.strip().upper() for s in env_tickers.split(",") if s.strip()]
         print(f"📋 tickers from NEWS_TICKERS env: {len(ts)} found")
         return ts
-    print("⚠️  no tickers found (journal empty + NEWS_TICKERS unset)")
+    print("⚠️  no tickers found (journals had no snapshot + NEWS_TICKERS unset)")
     return []
 
 
