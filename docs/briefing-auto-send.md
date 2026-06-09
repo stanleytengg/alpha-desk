@@ -189,3 +189,23 @@ which claude
 2. plist 路徑需對應各自的 home 目錄，依 README 步驟替換 `YOUR_USERNAME`
 3. `briefing-out/` 不 commit（已 gitignore），純 local 輸出
 4. 唯一需要 commit 的是 `.env.example`（模板）、`tools/`（scripts）、`tools/launchd/`（plist 模板）
+
+## 喚醒排程 + 不睡著（三個發送時間）
+
+發送時間（系統本地 CET/CEST）：17:00 主、17:30 / 18:30 備援。
+
+**喚醒（把 Mac 叫醒）**
+- `pmset repeat wakepoweron … 16:59 weekdays` — 16:59 喚醒，涵蓋全部三個發送窗。
+
+**保持清醒（關鍵）** — 實測 16:59 scheduled wake 只是 dark-wake，2 秒後就釋放、可能在 17:00 前又睡回去，導致 launchd 推遲 17:00 job（症狀：`launchctl print` 顯示 `runs` 沒增加）。解法：
+- **`com.fadacai.caffeinate` LaunchAgent**（`tools/launchd/com.fadacai.caffeinate.plist`）在 16:59 weekdays 跑 `caffeinate -u -t 5520`，把 Mac 從 16:59 撐到 18:31，三個窗都在全清醒態執行。
+- 安裝：`cp tools/launchd/com.fadacai.caffeinate.plist ~/Library/LaunchAgents/ && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.fadacai.caffeinate.plist`
+
+> caffeinate 已涵蓋整段時間 → runner 內 `schedule_backup_wakes()`（17:29/18:29 一次性 pmset wake）與其 `pmset-nopasswd.sudoers` 變成**冗餘備援，非必要**。不裝 sudoers 也沒關係（runner 只會 log 一行 non-fatal）。
+
+## 故障排除：自動推送失敗 / 卡死
+
+- **`claude -p` 卡滿 900s timeout ×3**：headless 跑遇到 Claude 工具權限提示無法回答。runner 已加 `--dangerously-skip-permissions`（信任的自動化、跑自己的 repo）。注意此旗標**不**繞過 macOS TCC 檔案彈窗。
+- **`Operation not permitted`（TCC）**：repo 在 `~/Desktop`（受保護）。launchd job 第一次存取會跳「取用桌面」彈窗，按一次「允許」後就持續有效（不需每天按）。若真的反覆跳，把 `/bin/bash` 加進 系統設定→隱私權→完整取用磁碟。
+- **`runs` 不增加 / 今天沒跑**：dark-wake 沒撐住 → 見上方 caffeinate。
+- **手動補發**：`launchctl kickstart -k gui/$(id -u)/com.fadacai.briefing`（會真的推一封）。

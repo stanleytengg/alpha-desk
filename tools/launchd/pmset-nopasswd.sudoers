@@ -1,0 +1,5 @@
+# Allow the briefing launchd agent (runs as user `supatrick`) to schedule
+# wake events via pmset without a password prompt. Used by briefing_runner.sh
+# to wake the Mac 1 min before each backup send time (17:29 / 18:29 CET/CEST).
+# Install to /etc/sudoers.d/briefing-pmset (mode 0440, root-owned).
+supatrick ALL=(root) NOPASSWD: /usr/bin/pmset

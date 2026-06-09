@@ -42,6 +42,32 @@ if [[ "$SKIP_NON_TRADING" == "true" ]]; then
   fi
 fi
 
+# ── Schedule one-shot wakes 1 min before each backup send time ─────────────
+# Send times are 17:00 / 17:30 / 18:30 system-local (CET/CEST). The 16:59 wake
+# is handled by `pmset repeat wakepoweron … 16:59` (covers the 17:00 main send).
+# Here we add today's 17:29 + 18:29 one-shot wakes so the 17:30/18:30 backups
+# can fire even if the Mac would otherwise sleep. pmset needs root → requires a
+# NOPASSWD sudo rule for /usr/bin/pmset (see docs/briefing-auto-send.md).
+# This script exports TZ=ET, but pmset interprets times in the *system* local
+# zone, so we strip TZ (env -u TZ) when formatting the date/time strings.
+schedule_backup_wakes() {
+  command -v pmset >/dev/null 2>&1 || return 0
+  local today now_hm t hh mm
+  today="$(env -u TZ date '+%m/%d/%Y')"
+  now_hm="$(env -u TZ date '+%H%M')"
+  for t in 1729 1829; do
+    # only schedule if the wake time is still in the future today
+    [[ "$now_hm" < "$t" ]] || continue
+    hh="${t:0:2}"; mm="${t:2:2}"
+    if sudo -n /usr/bin/pmset schedule wake "$today $hh:$mm:00" >/dev/null 2>&1; then
+      log "Scheduled one-shot wake at $today $hh:$mm (system-local)"
+    else
+      log "Could not schedule wake $hh:$mm — need NOPASSWD sudo for pmset? (non-fatal)"
+    fi
+  done
+}
+schedule_backup_wakes
+
 # ── Friday → add --codex ───────────────────────────────────────────────────
 DOW=$(python3 -c "from datetime import date; print(date.today().weekday())")  # 4 = Friday
 CODEX_FLAG=""
@@ -89,7 +115,12 @@ while [[ $attempt -lt $RETRY_MAX ]]; do
   # can't block for hours — alarm kills it and the retry loop takes over.
   # macOS has no `timeout`; perl's alarm is built-in and portable.
   CLAUDE_TIMEOUT="${CLAUDE_TIMEOUT:-900}"
-  if perl -e 'alarm shift; exec @ARGV' "$CLAUDE_TIMEOUT" claude -p "$PROMPT" >> "$LOG_DIR/launchd.log" 2>> "$LOG_DIR/launchd.err"; then
+  # --dangerously-skip-permissions: this is an unattended trusted run on the
+  # user's own repo; without it, any Claude Code tool-permission prompt has no
+  # way to be answered headless and the job hangs until the alarm timeout.
+  # (NOTE: this does NOT bypass macOS TCC file-access dialogs — those need
+  #  Full Disk Access granted to /bin/bash. See docs/briefing-auto-send.md.)
+  if perl -e 'alarm shift; exec @ARGV' "$CLAUDE_TIMEOUT" claude -p "$PROMPT" --dangerously-skip-permissions >> "$LOG_DIR/launchd.log" 2>> "$LOG_DIR/launchd.err"; then
     log "Claude briefing completed successfully"
     success=true
     break
