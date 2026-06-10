@@ -67,6 +67,33 @@ codex exec --color never --skip-git-repo-check --sandbox read-only \
 - `feedback/` — 交易風格偏好，所有 skills 每次必讀
 - `research/` — 投資論文與研究筆記
 
+## HTML 報告站工作流
+
+每份報告輸出 markdown（source of truth）後自動轉為 HTML，push 到獨立 private repo 部署為 Cloudflare Pages 靜態網站。
+
+### 工具
+```bash
+python3 tools/generate_html.py briefing 2026-06-10 [--push]
+python3 tools/generate_html.py portfolio-review briefing-out/portfolio-review-2026-06-07.md [--push]
+python3 tools/generate_html.py stock-analysis briefing-out/stock-analysis-NVDA-2026-06-10.md [--push]
+python3 tools/generate_html.py options-strategy briefing-out/options-strategy-NVDA-2026-06-10.md [--push]
+```
+- 無 `--push`：只在 `briefing-out/html/` 存一份本地 HTML
+- 有 `--push`：同步到 `$REPORTS_REPO_PATH` 並 git push（Cloudflare Pages 自動部署）
+- `send_briefing.py` 在 `--send` 流程中自動呼叫 `generate_html briefing --push`，Telegram 訊息末自動附連結
+
+### 環境變數（.env，絕不 commit 到主 repo）
+```
+REPORT_SITE_TOKEN=<32-hex-token>          # URL 混淆用，等同隱私鎖
+REPORT_SITE_URL=https://fadacai-reports.pages.dev
+REPORTS_REPO_PATH=/path/to/fadacai-reports  # private repo local clone
+```
+
+### 隱私原則
+- Reports repo 必須是 **private**，token 只存在 .env 與 repo 目錄名
+- 網站根目錄放空白 decoy index.html；所有頁面含 `noindex,nofollow` meta
+- `cache/`、`send-log.jsonl`、`launchd.log`、codex prompt/out 等敏感快取**不上傳**到 reports repo
+
 ## Step 0 統一規範（所有 skills 共用）
 
 ### 0a. 每次必做

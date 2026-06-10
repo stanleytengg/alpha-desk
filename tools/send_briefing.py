@@ -18,6 +18,7 @@ import os
 import re
 import smtplib
 import ssl
+import subprocess
 import sys
 import time
 import urllib.error
@@ -267,6 +268,43 @@ def with_retry(fn, label: str, max_retries: int) -> bool:
     return False
 
 
+# ── HTML generation helper ─────────────────────────────────────────────────────
+def _generate_html(date_str: str, dry_run: bool) -> str | None:
+    """Call generate_html.py and return the public URL on success, or None on failure.
+
+    Returns empty string if site URL/token not configured (skip silently).
+    """
+    token = os.environ.get("REPORT_SITE_TOKEN", "")
+    site_url = os.environ.get("REPORT_SITE_URL", "")
+    repo_path = os.environ.get("REPORTS_REPO_PATH", "")
+    if not (token and site_url and repo_path):
+        return ""  # not configured, skip
+
+    script = ROOT / "tools" / "generate_html.py"
+    cmd = [sys.executable, str(script), "briefing", date_str, "--push"]
+    if dry_run:
+        print(f"[DRY-RUN] HTML 生成 + push → {site_url}/r/{token}/briefing/{date_str}.html")
+        return f"{site_url}/r/{token}/briefing/{date_str}.html"
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode in (0, 2):  # 0=ok, 2=push failed (repo not ready) but HTML written
+            url = f"{site_url}/r/{token}/briefing/{date_str}.html"
+            if result.returncode == 2:
+                print(f"[send_briefing] ⚠️ HTML 已生成但 push 失敗，連結暫不附加")
+                return None
+            return url
+        print(f"[send_briefing] ⚠️ generate_html 失敗 (exit {result.returncode})")
+        if result.stderr:
+            print(result.stderr[:300])
+        return None
+    except subprocess.TimeoutExpired:
+        print("[send_briefing] ⚠️ generate_html 逾時（60s）")
+        return None
+    except Exception as e:
+        print(f"[send_briefing] ⚠️ generate_html 例外：{e}")
+        return None
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main() -> int:
     load_env()
@@ -296,7 +334,16 @@ def main() -> int:
         "dry_run": dry_run,
         "telegram": None,
         "email": None,
+        "html": None,
     }
+
+    # ── HTML generation (best-effort, runs before send so link can be appended)
+    html_url = _generate_html(date_str, dry_run)
+    if html_url:
+        tg_text = tg_text.rstrip() + f"\n\n🔗 網頁版：{html_url}"
+        log_entry["html"] = "ok"
+    else:
+        log_entry["html"] = "failed" if html_url is None else "skipped"
 
     # ── Telegram
     tg_ok = with_retry(

@@ -264,3 +264,12 @@ For stocks that are overbought or above target price:
 
 ## Output Language
 Use Traditional Chinese (繁體中文) for all text output.
+
+## 存檔 + HTML 生成
+報告完成後：
+1. 使用 Write tool 把完整 markdown 寫到 `briefing-out/options-strategy-<TICKER>-YYYY-MM-DD.md`
+2. 執行：
+```bash
+python3 tools/generate_html.py options-strategy briefing-out/options-strategy-<TICKER>-YYYY-MM-DD.md --push
+```
+成功時印出網頁連結，失敗時印警告並繼續。

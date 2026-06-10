@@ -2,7 +2,7 @@
 name: briefing
 description: "Daily portfolio briefing with 3 tiers: /briefing (quick ~1min), /briefing full (~3min), /briefing deep (~5min). Replaces daily-briefing."
 user_invocable: true
-model: claude-sonnet-4-6
+model: claude-fable-5
 ---
 
 # Portfolio Briefing
@@ -20,8 +20,10 @@ model: claude-sonnet-4-6
 1. 把完整 briefing markdown 寫到 `briefing-out/YYYY-MM-DD-full.md`（Write tool）
 2. 把 Telegram 格式純文字寫到 `briefing-out/YYYY-MM-DD-telegram.txt`（Write tool）
 3. 呼叫 `python3 tools/send_briefing.py YYYY-MM-DD`（Bash tool）推送至 Telegram + Email
+   - send_briefing.py 內部自動呼叫 `generate_html.py`，push HTML 到 reports repo，並在 Telegram 訊息末加上網頁連結
 
 `briefing telegram` 沒有 `--send` 時：只寫 `briefing-out/` 兩個檔案，不發送。
+若需手動生成 HTML（不發送）：`python3 tools/generate_html.py briefing YYYY-MM-DD [--push]`
 
 ### 執行模型建議
 - `/briefing`（quick）→ Sonnet 4.6（純彙整；session 已長則先 `/compact`）
@@ -802,6 +804,25 @@ Agent(subagent_type="data-collector"):
 
 ---
 
+### HTML 生成 + Tier 標記（所有 tier 共用）
+
+寫完 `briefing-out/YYYY-MM-DD-full.md` 後，**先寫 tier 標記**再生成 HTML：
+
+```bash
+# 1. 寫 tier 標記（讓 generate_html.py 知道這次是哪個 tier）
+echo "<tier>" > briefing-out/YYYY-MM-DD-tier.txt
+# <tier> 填入：quick | telegram | full | deep
+
+# 2. 生成 HTML + push（tier gate 自動判斷：只有升級才推）
+python3 tools/generate_html.py briefing YYYY-MM-DD --push
+# 成功時印出網頁連結；若網站已有更高 tier 則跳過 push（本地 HTML 仍更新）
+```
+
+**Tier 升級規則：** `quick(1) < telegram(2) < full(3) < deep(4)`
+- 網站有 telegram + 跑 deep → **push**（升級）
+- 網站有 deep + 跑 telegram → **不 push**（降級，保留深版；本地留一份）
+- 同級 → push（覆蓋更新）
+
 ### --send 旗標處理
 
 寫完兩個檔案後，若 arguments 含 `--send`：
@@ -809,6 +830,11 @@ Agent(subagent_type="data-collector"):
 ```bash
 python3 tools/send_briefing.py YYYY-MM-DD
 ```
+
+`send_briefing.py` 會自動：
+1. 呼叫 `tools/generate_html.py briefing YYYY-MM-DD --push`（best-effort，失敗不擋發送）
+2. HTML push 成功 → Telegram 訊息末自動附加「🔗 網頁版：...」連結
+3. 發送 Telegram + Email
 
 成功時輸出「✅ Telegram 已發送 / Email 已寄出」，失敗時輸出錯誤訊息（sender 自帶 retry + error notification）。
 

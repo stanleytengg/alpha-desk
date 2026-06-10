@@ -584,6 +584,15 @@ Use `mcp__fmp-mcp__getCompanyProfile` only for tickers where yfinance data is in
 Use clean markdown tables. Keep it concise but comprehensive. All dollar amounts in USD.
 Use Traditional Chinese (繁體中文) for all text output to match the user's preference.
 
+## 存檔 + HTML 生成
+報告完成後：
+1. 使用 Write tool 把完整 markdown 寫到 `briefing-out/portfolio-review-YYYY-MM-DD.md`
+2. 執行：
+```bash
+python3 tools/generate_html.py portfolio-review briefing-out/portfolio-review-YYYY-MM-DD.md --push
+```
+成功時印出網頁連結，失敗（repo 尚未建立）時印警告並繼續。若用戶未設定 reports repo，省略 --push。
+
 ## Performance Notes
 - The full report with G section will make many MCP calls. Expect 2-3 minutes for a 20-stock portfolio.
 - If the user wants a quick report, they can say "快速報告" to skip section G.

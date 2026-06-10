@@ -488,3 +488,12 @@ raw data 必須是 fact 數值，**不能** 是 derived label。技術面只給 
 
 ## Output Language
 Use Traditional Chinese (繁體中文) for all text output.
+
+## 存檔 + HTML 生成
+報告完成後：
+1. 使用 Write tool 把完整 markdown 寫到 `briefing-out/stock-analysis-<TICKER>-YYYY-MM-DD.md`
+2. 執行：
+```bash
+python3 tools/generate_html.py stock-analysis briefing-out/stock-analysis-<TICKER>-YYYY-MM-DD.md --push
+```
+成功時印出網頁連結，失敗（repo 尚未建立）時印警告並繼續。
