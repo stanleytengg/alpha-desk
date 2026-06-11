@@ -122,23 +122,6 @@ def send_telegram(text: str, dry_run: bool = False) -> None:
                 raise RuntimeError(f"Telegram API error: {result}")
 
 
-def send_telegram_error(message: str) -> None:
-    try:
-        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-        if not token or not chat_id:
-            return
-        url = TELEGRAM_API.format(token=token)
-        payload = json.dumps({"chat_id": chat_id,
-                               "text": f"⚠️ Briefing 發送失敗\n{message[:300]}"}).encode()
-        req = urllib.request.Request(url, data=payload,
-                                     headers={"Content-Type": "application/json"})
-        ctx = ssl._create_unverified_context()
-        urllib.request.urlopen(req, timeout=10, context=ctx)
-    except Exception:
-        pass  # best-effort, don't recurse
-
-
 # ── Markdown → plain text ────────────────────────────────────────────────────
 def md_to_plain(text: str) -> str:
     """Strip markdown syntax so plain-text email clients (Gmail) read cleanly."""
@@ -352,7 +335,8 @@ def main() -> int:
     )
     log_entry["telegram"] = "ok" if tg_ok else "failed"
     if not tg_ok:
-        send_telegram_error(f"{date_str} Telegram 推送失敗（已重試 {max_retries} 次）")
+        # 失敗只記 log，不推 Telegram 錯誤訊息（用戶偏好：Telegram 只收正式 briefing）
+        print(f"[send_briefing] {date_str} Telegram 推送失敗（已重試 {max_retries} 次），詳見 send-log.jsonl")
 
     # ── Email (independent of Telegram success)
     email_ok = with_retry(

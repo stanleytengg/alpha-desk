@@ -11,20 +11,20 @@
     <string>/Users/YOUR_USERNAME/path/to/portfolio/tools/briefing_runner.sh</string>
   </array>
 
-  <!-- Multiple ET trigger points. TZ env below interprets Hour in New York time
-       (auto DST). A laptop often sleeps through any single fixed time, so we fire
-       at several; briefing_runner.sh bails immediately if already sent today, and
-       send_briefing.py dedups — so at most ONE briefing goes out per day. -->
+  <!-- Single daily trigger at 17:00 system-local time. One attempt per day —
+       no backup windows; if the run fails it only logs (no Telegram error
+       notify). Pair with `pmset repeat wakepoweron … 16:59 weekdays` and the
+       com.fadacai.caffeinate agent so the Mac is awake for the window. -->
   <key>StartCalendarInterval</key>
   <array>
-    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>30</integer></dict>
-    <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>30</integer></dict>
-    <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
   </array>
 
+  <!-- TZ deliberately NOT set here: launchd then evaluates StartCalendarInterval
+       in the system local timezone. ET timestamps are handled by
+       briefing_runner.sh exporting TZ internally. -->
   <key>EnvironmentVariables</key>
   <dict>
-    <key>TZ</key><string>America/New_York</string>
     <!-- Add PATH so launchd can find python3 and claude CLI -->
     <key>PATH</key><string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/Users/YOUR_USERNAME/.local/bin</string>
     <key>HOME</key><string>/Users/YOUR_USERNAME</string>

@@ -190,18 +190,16 @@ which claude
 3. `briefing-out/` 不 commit（已 gitignore），純 local 輸出
 4. 唯一需要 commit 的是 `.env.example`（模板）、`tools/`（scripts）、`tools/launchd/`（plist 模板）
 
-## 喚醒排程 + 不睡著（三個發送時間）
+## 喚醒排程 + 不睡著（單一發送時間）
 
-發送時間（系統本地 CET/CEST）：17:00 主、17:30 / 18:30 備援。
+發送時間（系統本地 CET/CEST）：**17:00，一天只試這一次**。無備援窗；失敗只記 log，**不**推 Telegram 錯誤訊息（2026-06-11 用戶決定：Telegram 只收正式 briefing）。
 
 **喚醒（把 Mac 叫醒）**
-- `pmset repeat wakepoweron … 16:59 weekdays` — 16:59 喚醒，涵蓋全部三個發送窗。
+- `pmset repeat wakepoweron … 16:59 weekdays` — 16:59 喚醒，涵蓋 17:00 發送窗。
 
 **保持清醒（關鍵）** — 實測 16:59 scheduled wake 只是 dark-wake，2 秒後就釋放、可能在 17:00 前又睡回去，導致 launchd 推遲 17:00 job（症狀：`launchctl print` 顯示 `runs` 沒增加）。解法：
-- **`com.fadacai.caffeinate` LaunchAgent**（`tools/launchd/com.fadacai.caffeinate.plist`）在 16:59 weekdays 跑 `caffeinate -u -t 5520`，把 Mac 從 16:59 撐到 18:31，三個窗都在全清醒態執行。
+- **`com.fadacai.caffeinate` LaunchAgent**（`tools/launchd/com.fadacai.caffeinate.plist`）在 16:59 weekdays 跑 `caffeinate -u -t 5520`，把 Mac 從 16:59 撐到 18:31 — 足以涵蓋 runner 最壞情況（3 次 claude retry × 900s timeout + 資料快取刷新 ≈ 50 分鐘）。
 - 安裝：`cp tools/launchd/com.fadacai.caffeinate.plist ~/Library/LaunchAgents/ && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.fadacai.caffeinate.plist`
-
-> caffeinate 已涵蓋整段時間 → runner 內 `schedule_backup_wakes()`（17:29/18:29 一次性 pmset wake）與其 `pmset-nopasswd.sudoers` 變成**冗餘備援，非必要**。不裝 sudoers 也沒關係（runner 只會 log 一行 non-fatal）。
 
 ## 故障排除：自動推送失敗 / 卡死
 

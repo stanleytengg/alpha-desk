@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # briefing_runner.sh — launchd entry point for daily briefing push.
 #
-# Called by com.fadacai.briefing.plist at 13:00 America/New_York on weekdays.
+# Called by com.fadacai.briefing.plist at 17:00 system-local (CET/CEST) on
+# weekdays — one attempt per day, no backup windows.
 # Checks NYSE calendar, adds --codex on Fridays, then invokes Claude CLI.
 
 set -euo pipefail
@@ -41,32 +42,6 @@ if [[ "$SKIP_NON_TRADING" == "true" ]]; then
     exit 0
   fi
 fi
-
-# ── Schedule one-shot wakes 1 min before each backup send time ─────────────
-# Send times are 17:00 / 17:30 / 18:30 system-local (CET/CEST). The 16:59 wake
-# is handled by `pmset repeat wakepoweron … 16:59` (covers the 17:00 main send).
-# Here we add today's 17:29 + 18:29 one-shot wakes so the 17:30/18:30 backups
-# can fire even if the Mac would otherwise sleep. pmset needs root → requires a
-# NOPASSWD sudo rule for /usr/bin/pmset (see docs/briefing-auto-send.md).
-# This script exports TZ=ET, but pmset interprets times in the *system* local
-# zone, so we strip TZ (env -u TZ) when formatting the date/time strings.
-schedule_backup_wakes() {
-  command -v pmset >/dev/null 2>&1 || return 0
-  local today now_hm t hh mm
-  today="$(env -u TZ date '+%m/%d/%Y')"
-  now_hm="$(env -u TZ date '+%H%M')"
-  for t in 1729 1829; do
-    # only schedule if the wake time is still in the future today
-    [[ "$now_hm" < "$t" ]] || continue
-    hh="${t:0:2}"; mm="${t:2:2}"
-    if sudo -n /usr/bin/pmset schedule wake "$today $hh:$mm:00" >/dev/null 2>&1; then
-      log "Scheduled one-shot wake at $today $hh:$mm (system-local)"
-    else
-      log "Could not schedule wake $hh:$mm — need NOPASSWD sudo for pmset? (non-fatal)"
-    fi
-  done
-}
-schedule_backup_wakes
 
 # ── Friday → add --codex ───────────────────────────────────────────────────
 DOW=$(python3 -c "from datetime import date; print(date.today().weekday())")  # 4 = Friday
@@ -138,22 +113,7 @@ while [[ $attempt -lt $RETRY_MAX ]]; do
 done
 
 if [[ "$success" != "true" ]]; then
-  log "All $RETRY_MAX attempts failed — sending error notification"
-  # best-effort Telegram error notification
-  if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
-    python3 - <<'PYEOF'
-import os, json, urllib.request
-token = os.environ["TELEGRAM_BOT_TOKEN"]
-chat  = os.environ["TELEGRAM_CHAT_ID"]
-url   = f"https://api.telegram.org/bot{token}/sendMessage"
-msg   = "⚠️ Briefing runner 失敗：claude -p 所有 retry 均失敗，請手動檢查 briefing-out/launchd.err"
-data  = json.dumps({"chat_id": chat, "text": msg}).encode()
-req   = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-try:
-    urllib.request.urlopen(req, timeout=10)
-except Exception as e:
-    print(f"Telegram error notify failed: {e}")
-PYEOF
-  fi
+  # 失敗只記 log，不推 Telegram 錯誤訊息（用戶偏好：Telegram 只收正式 briefing）
+  log "All $RETRY_MAX attempts failed — see briefing-out/launchd.err (no Telegram error notify by design)"
   exit 1
 fi
