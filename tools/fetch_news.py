@@ -33,6 +33,7 @@ import time
 import warnings
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -84,7 +85,7 @@ def parse_journal_tickers(path: Path) -> list[str]:
     in_holdings_table = False
     for raw in path.read_text().splitlines():
         line = raw.strip()
-        if "持倉快照" in line or "持倉清單" in line:
+        if "持倉快照" in line or "倉位快照" in line or "持倉清單" in line:
             in_holdings_table = True
             continue
         if in_holdings_table and line.startswith("##"):
@@ -212,11 +213,14 @@ def fetch_news_articles(sym_us: str, token: str) -> tuple[list[dict], list[str]]
     for a in raw_data:
         content_raw = a.get("content") or ""
         sentiment = a.get("sentiment") or {}
+        # EODHD /news has no "source" field — derive from link hostname
+        link = a.get("link", "")
+        source = a.get("source", "") or urlparse(link).netloc.removeprefix("www.")
         articles.append({
             "title": a.get("title", ""),
             "date": a.get("date", ""),
-            "link": a.get("link", ""),
-            "source": a.get("source", ""),
+            "link": link,
+            "source": source,
             "content_excerpt": content_raw[:BODY_CHARS] if content_raw else "",
             "symbols": a.get("symbols") or [],
             "tags": a.get("tags") or [],
@@ -312,6 +316,8 @@ def main() -> int:
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
         # P3 gate: check "content" in fields_available before body-mining
         "fields_available": fields_sorted,
+        # article body lives under this per-article key (NOT "content")
+        "body_field": "content_excerpt",
         "tickers": result,
         "errors": errors,
     }

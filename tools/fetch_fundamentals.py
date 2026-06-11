@@ -101,7 +101,7 @@ def parse_journal_tickers(path: Path) -> list[str]:
     in_holdings_table = False
     for raw in path.read_text().splitlines():
         line = raw.strip()
-        if "持倉快照" in line or "持倉清單" in line:
+        if "持倉快照" in line or "倉位快照" in line or "持倉清單" in line:
             in_holdings_table = True
             continue
         if in_holdings_table and line.startswith("##"):
