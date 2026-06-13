@@ -30,7 +30,8 @@ Generate a standardized research report for one or more stock tickers.
 
 fundamentals cache 處理：
 - TICKER 在 cache 且 mtime < 30h → **使用**，供三錨點估值 + probability agent 1d/1h
-- TICKER 不在 cache 或 mtime > 30h → Agent 3（EODHD + Sentiment）同批抓 `mcp__eodhd-mcp__get_fundamentals_snapshot(TICKER.US)` + `mcp__eodhd-mcp__get_earnings_history(TICKER.US)`（見下方 Agent 3 擴充）
+- TICKER 不在 cache 或 mtime > 30h → **先跑 `python3 tools/fetch_fundamentals.py --ticker TICKER`**（單票 fetch + merge 進 cache，含 A4 `self_valuation`），再讀 cache。**這樣 cache miss/stale 也能取得 A4**，不再直接標 `(self-val N/A)`。Agent 3 仍同批抓 `get_fundamentals_snapshot` + `get_earnings_history` 作即時三錨點交叉（fetch_fundamentals 失敗時的 fallback）。
+- 只有 `fetch_fundamentals --ticker` **真的失敗**（EODHD 無資料/token 缺）才標 `(self-val N/A)`。
 - `pe_ratio == 0.0 / null` → 丟棄 A1 錨；`peg_ratio == 0.0 / null` → 丟棄 A2 錨，標 `(anchor unavailable)`
 
 這些 cache 資料用於：
@@ -284,12 +285,17 @@ Use `mcp__eodhd-mcp__get_sentiment_trend` and `mcp__eodhd-mcp__get_news_sentimen
 | A1 市場 PE | EODHD `pe_ratio` | 0.0/null → N/A |
 | A2 PEG 錨 | `peg_ratio × growth%`（AI龍頭 PEG基準=1.5，其餘=1.0） | 0.0/null → N/A |
 | A3 分析師錨 | `wall_street_target ÷ fwdEPS`；fwdEPS 優先 `forward_estimates.curr_fy.eps_avg`（真實共識）→ `next_fy.eps_avg` → `eps_ttm×(1+growth)` 近似 | 任一缺 → N/A |
-| **A4 自建錨（分歧）** | `fundamentals cache self_valuation.own_target_price` | `unavailable` → `(self-val N/A)`；`low` → `⚠️低信心`；**A4 不進 median，不進 EV — 僅做分歧 flag** |
+| **A4 自建錨（分歧）** | `self_valuation.own_target_price`（cache miss/stale 已由 `fetch_fundamentals.py --ticker` 補抓）| `unavailable`（真失敗才）→ `(self-val N/A)`；`low` → `⚠️低信心`；**A4 不進 median，不進 EV — 僅做分歧 flag** |
 
 - **基準 Fair PE** = median(A1, A2, A3)（A4 排除在外）；**樂觀** = max × 1.25（上限 current_PE × 1.25）；**悲觀** = min × 0.70
 - **FwdEPS 情境**：基準=analyst 共識 fwdEPS（`forward_estimates.curr_fy.eps_avg`，缺則 next_fy，再缺才用 `eps_ttm×(1+growth)` 近似；cache `self_valuation.a3_fwdeps_source` 已標來源）；樂觀=基準×(1+min(avg_surprise%,15%))；悲觀=基準×(1−5%/10%)
 - **EPS 修正動能**：`forward_estimates` 另帶 `eps_revision_30d_pct` + `revisions_up/down_30d`，30 日共識上修=guidance 偏正領先訊號，供 thesis/P3 引用（非估值輸入）
-- stock-analysis 單股深度允許**每次都嘗試 DCF 交叉**：`mcp__fmp-mcp__getDCFValuation(TICKER)`（402→靜默略過，標 `DCF 不可用 (FMP free tier)`）；DCF 僅 sanity flag，不進 EV
+- stock-analysis 單股深度**每次都做 DCF 交叉**，改用**自建 `tools/simple_dcf.py`**（FMP free tier 無 getDCFValuation）：把 Agent 1 yfinance 已抓的數字餵進去——
+  ```bash
+  python3 tools/simple_dcf.py --fcf <freeCashflow> --shares <sharesOutstanding> \
+    --cash <totalCash> --debt <totalDebt> --growth <forward EPS/rev 成長小數> [--wacc 0.10] [--terminal 0.03]
+  ```
+  回 `intrinsic_value_per_share`。FCF≤0 → 工具自動回 N/A（標 `DCF 不適用（FCF 為負）`）。**DCF 僅 sanity flag，不進 EV**；高成長股 terminal 佔比常 >70%（工具會回 `terminal_pct_of_ev`），偏離大時註明「假設敏感、參考性低」。FMP getDCFValuation 僅作備援（通常 402）。
 
 - **機率分布：**
 
@@ -301,7 +307,7 @@ Use `mcp__eodhd-mcp__get_sentiment_trend` and `mcp__eodhd-mcp__get_news_sentimen
 
   Expected value = Σ(機率 × 公允價) = $XXX → vs 現價 $XXX：±X%
 
-  DCF 交叉（若有）：`DCF: $XXX vs 基準公允 $XXX（差 ±X%）`
+  DCF 交叉（`simple_dcf.py` 自建，必做）：`DCF: $XXX vs 基準公允 $XXX（差 ±X%）；terminal 佔 EV X%`（FCF<0 → `DCF 不適用`）
 
 - **A4 自建分歧（必顯示）：**
   - A4 目標價：`$XXX`（信心：`ok` / `⚠️低信心` / `(self-val N/A)`）

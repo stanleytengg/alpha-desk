@@ -329,8 +329,29 @@ CF_HEADERS = """\
 
 
 # ── Markdown conversion ────────────────────────────────────────────────────────
+def _ensure_blank_before_tables(md_text: str) -> str:
+    """Python-Markdown 的 tables extension 要求表格前有空行，否則整塊當段落
+    （raw pipes + <br>）。報告常見 `**標題:**` 緊接表格 → 渲染跑掉。
+    這裡在「非空白、非表格行」之後緊接的表格首行前自動插入空行。跳過 fenced code。"""
+    lines = md_text.split("\n")
+    out: list[str] = []
+    in_fence = False
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        if (not in_fence and stripped.startswith("|") and out
+                and out[-1].strip() != "" and not out[-1].lstrip().startswith("|")):
+            out.append("")  # 插入空行讓 tables extension 認得
+        out.append(line)
+    return "\n".join(out)
+
+
 def md_to_html(md_text: str) -> tuple[str, str]:
     """Return (toc_html, body_html)."""
+    md_text = _ensure_blank_before_tables(md_text)
     md = markdown.Markdown(
         extensions=[
             "tables",

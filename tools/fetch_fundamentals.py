@@ -616,12 +616,28 @@ def compute_self_valuation(
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
+def _parse_cli_tickers() -> list[str]:
+    """--ticker SYM 或 --ticker SYM1,SYM2（單/多票模式，fetch + merge 進現有 cache）。"""
+    out: list[str] = []
+    for i, a in enumerate(sys.argv):
+        if a == "--ticker" and i + 1 < len(sys.argv):
+            out += [s.strip().upper() for s in sys.argv[i + 1].split(",") if s.strip()]
+        elif a.startswith("--ticker="):
+            out += [s.strip().upper() for s in a.split("=", 1)[1].split(",") if s.strip()]
+    return out
+
+
 def main() -> int:
     load_env()
     force = "--force" in sys.argv
     dry_run = os.environ.get("DRY_RUN", "").strip() in ("1", "true", "yes")
+    cli_tickers = _parse_cli_tickers()
 
-    if not force and is_cache_fresh(SNAP_FILE, CACHE_TTL_HOURS):
+    # --ticker 模式：強制抓指定票 + merge 進現有 cache（cache miss 時補單票 A4，不覆蓋其他）
+    if cli_tickers:
+        force = True
+        print(f"🎯 單票模式：{', '.join(cli_tickers)}（fetch + merge）")
+    elif not force and is_cache_fresh(SNAP_FILE, CACHE_TTL_HOURS):
         print("✅ fundamentals-snapshot.json fresh, skipping")
         return 0
 
@@ -639,7 +655,7 @@ def main() -> int:
             atomic_write(SNAP_FILE, empty)
         return 0
 
-    tickers = get_tickers()
+    tickers = cli_tickers if cli_tickers else get_tickers()
     if not tickers:
         empty = {
             "status": "skipped",
@@ -695,14 +711,26 @@ def main() -> int:
         print("[DRY-RUN] complete, no write")
         return 0
 
+    # --ticker 模式：merge 進現有 cache（保留其他票 + 更新 generated_at 為現有，僅標 merged_at）
+    merged = result
+    if cli_tickers and SNAP_FILE.exists():
+        try:
+            existing = json.loads(SNAP_FILE.read_text())
+            base = dict(existing.get("tickers", {}))
+            base.update(result)  # 新抓的覆蓋同名舊的，其餘保留
+            merged = base
+            print(f"🔗 merge：現有 {len(existing.get('tickers', {}))} 票 + 本次 {len(result)} 票 → {len(merged)} 票")
+        except Exception as e:
+            print(f"⚠️  merge 讀取現有 cache 失敗（改為僅寫本次）：{e}")
+
     payload = {
-        "status": "ok" if result else "empty",
+        "status": "ok" if merged else "empty",
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
-        "tickers": result,
+        "tickers": merged,
         "errors": errors,
     }
     atomic_write(SNAP_FILE, payload)
-    print(f"✅ fundamentals-snapshot.json: {len(result)} tickers, {len(errors)} errors")
+    print(f"✅ fundamentals-snapshot.json: {len(merged)} tickers, {len(errors)} errors")
     if errors:
         for err in errors:
             print(f"   ⚠️  {err['ticker']}: {err['error']}")
