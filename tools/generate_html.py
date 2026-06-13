@@ -3,11 +3,11 @@
 generate_html.py — Convert Markdown reports to self-contained HTML and optionally
 push to the private fadacai-reports repo for Cloudflare Pages hosting.
 
-Usage:
-  python3 tools/generate_html.py briefing 2026-06-10 [--push]
-  python3 tools/generate_html.py portfolio-review briefing-out/portfolio-review-2026-06-07.md [--push]
-  python3 tools/generate_html.py stock-analysis briefing-out/stock-analysis-NVDA-2026-06-10.md [--push]
-  python3 tools/generate_html.py options-strategy briefing-out/options-strategy-NVDA-2026-06-10.md [--push]
+Usage (push 預設開啟；加 --no-push 只存本地不上線):
+  python3 tools/generate_html.py briefing 2026-06-10 [--no-push]
+  python3 tools/generate_html.py portfolio-review briefing-out/portfolio-review-2026-06-07.md [--no-push]
+  python3 tools/generate_html.py stock-analysis briefing-out/stock-analysis-NVDA-2026-06-10.md [--no-push]
+  python3 tools/generate_html.py options-strategy briefing-out/options-strategy-NVDA-2026-06-10.md [--no-push]
 
 Environment (.env):
   REPORT_SITE_TOKEN      — 32-hex token used as URL directory (security by obscurity)
@@ -491,11 +491,14 @@ def main() -> int:
     load_env()
 
     # Parse args
-    push = "--push" in sys.argv
+    # push 預設開啟（2026-06-13，Netlify 升級 1,000 credits 後）；--no-push 可關閉。
+    # --push 仍可顯式指定（向後相容，無作用差異）。
+    push = "--no-push" not in sys.argv
     clean_args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if len(clean_args) < 2:
-        print("Usage: generate_html.py <type> <date-or-path> [--push]")
+        print("Usage: generate_html.py <type> <date-or-path> [--no-push]")
         print("  type: briefing | portfolio-review | stock-analysis | options-strategy")
+        print("  （預設自動 push 到 reports repo；加 --no-push 只存本地）")
         return 1
 
     report_type, arg2 = clean_args[0], clean_args[1]
