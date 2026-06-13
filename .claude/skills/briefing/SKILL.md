@@ -2,7 +2,7 @@
 name: briefing
 description: "Daily portfolio briefing with 3 tiers: /briefing (quick ~1min), /briefing full (~3min), /briefing deep (~5min). Replaces daily-briefing."
 user_invocable: true
-model: claude-fable-5
+model: claude-opus-4-8
 ---
 
 # Portfolio Briefing
@@ -29,7 +29,7 @@ model: claude-fable-5
 - `/briefing`（quick）→ Sonnet 4.6（純彙整；session 已長則先 `/compact`）
 - `/briefing telegram` → Sonnet 4.6（每日 launchd 自動推送，成本敏感，固定 Sonnet；週五 `--codex` 另走 gpt-5.5）
 - `/briefing full` → Opus 4.8（中等綜合 + Verdict；Phase 2 subagent 已外包 Haiku）
-- `/briefing deep` → Fable 5（最強旗艦：深度合成 + Codex 整合 + 機率/EV，一律 Fable）
+- `/briefing deep` → Opus 4.8（深度合成 + Codex 整合 + 機率/EV）
 
 切換方式：`/model sonnet`、`/model opus` 或 `/model fable` 後執行 skill。
 

@@ -284,16 +284,16 @@ Agent(
 所有 skill 的平行數據收集 Agent 都指定 `subagent_type: "data-collector"`（見 `.claude/agents/data-collector.md`）。
 Data-collector 每次啟動是全新 context（無歷史），Haiku 完全勝任純 MCP 抓資料工作。
 
-### 主 skill 執行模型（2026-06-09 更新：Fable 5 為最強旗艦，取代 Opus 4.8）
+### 主 skill 執行模型（2026-06-13 更新：全面回歸 Opus 4.8）
 
-模型階梯：**Fable 5**（`claude-fable-5`，$10/$50，最強旗艦、重推理、1M context）> **Opus 4.8**（`claude-opus-4-8`，$15/$75，前旗艦）> **Sonnet 4.6**（中堅）> **Haiku 4.5**（純機械）。Fable 5 對 Opus 4.8 是「能力↑+價格↓」的全面壓制，Opus 4.8 僅作 Fable refuse 時的 fallback。
+模型階梯：**Opus 4.8**（`claude-opus-4-8`，$15/$75，旗艦推理）> **Sonnet 4.6**（中堅）> **Haiku 4.5**（純機械）。
 
 | Skill / 任務 | 模型 | 理由 |
 |---|---|---|
-| `/ev-check` | **Fable 5** | 純第一性機率分布 + EV，反偷懶紀律最吃推理 |
-| `/portfolio-review` | **Fable 5** | 跨全組合綜合 + 風險 + EV，驅動資金決策 |
-| `/briefing deep` | **Fable 5** | 深度合成 + Codex 整合 + 機率/EV |
-| `/stock-analysis` | **Fable 5** | 單標的深掘，旗艦推理 |
+| `/ev-check` | **Opus 4.8** | 純第一性機率分布 + EV，反偷懶紀律最吃推理 |
+| `/portfolio-review` | **Opus 4.8** | 跨全組合綜合 + 風險 + EV，驅動資金決策 |
+| `/briefing deep` | **Opus 4.8** | 深度合成 + Codex 整合 + 機率/EV |
+| `/stock-analysis` | **Opus 4.8** | 單標的深掘，旗艦推理 |
 | `/options-strategy` | **Opus 4.8** | Greeks / 價差計算 + 多腿比較 |
 | `/briefing full` | **Opus 4.8** | 中等綜合 + Verdict |
 | `/briefing`（quick）| **Sonnet 4.6** | ~1min 彙整 |
@@ -303,8 +303,8 @@ Data-collector 每次啟動是全新 context（無歷史），Haiku 完全勝任
 | `/trade-journal` log | **Haiku 4.5** | 純記錄/格式化（frontmatter 預設 Sonnet，log 可降 Haiku）|
 | `/mcp-health` | **Haiku 4.5** | 純連線測試 |
 | data-collector subagent | **Haiku 4.5** | 純 MCP 抓資料 |
-| probability-honesty-checker subagent | **Fable 5** | 機率紀律執法者，用最強 |
+| probability-honesty-checker subagent | **Opus 4.8** | 機率紀律執法者，用旗艦 |
 
-**長 context：** session > 100k 時往 **Fable 5** 靠（1M context + 推理最穩），不再升 Opus。換主題先 `/clear`、同回合跑完就 `/clear`、過長先 `/compact`。
+**長 context：** session > 100k 時先 `/compact`，再繼續執行。換主題先 `/clear`。
 
-**手動切換：** skill frontmatter `model:` 已聲明；若 harness 未自動套用，用 `/model fable`、`/model opus`、`/model sonnet`、`/model haiku` 切換後再呼叫。
+**手動切換：** skill frontmatter `model:` 已聲明；若 harness 未自動套用，用 `/model opus`、`/model sonnet`、`/model haiku` 切換後再呼叫。
