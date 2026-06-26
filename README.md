@@ -78,7 +78,7 @@ flowchart TD
         CG["🪙 coingecko (optional)<br/>tokenomics · dominance"]
     end
 
-    HAIKU -->|parallel calls (Retry 3x)| MCP
+    HAIKU -->|"parallel calls (Retry 3x)"| MCP
 
     subgraph KB ["📁 Knowledge Base — local files"]
         direction LR
