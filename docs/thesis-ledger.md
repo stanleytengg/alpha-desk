@@ -26,7 +26,7 @@
     "metric": "DRAM ASP QoQ + 毛利率 vs 40%"  // 到期要抓來比的東西
   },
   "status": "pending",            // 見下方狀態表
-  "source": "briefing",           // briefing / portfolio-review
+  "source": "briefing",           // briefing / stock-analysis / crypto-analysis
   "created": "2026-05-31",
   "updated": "2026-05-31",
   "ev_snapshot": "+1.0% (7d)",    // 登錄當下的 EV（選填，事後回顧）
@@ -96,9 +96,9 @@ python3 tools/thesis_ledger.py stats [--ticker MU] [--source briefing] [--since 
 
 ## skill 整合
 
-- **briefing**：`Step 0.7` 驗收（`due` → 抓數 → `resolve`）+ 收尾登錄（`list` → `add`）
-- **portfolio-review**：`Step 0.6` 驗收 + 收尾登錄
-- 兩者共用同一帳本與工具；briefing 是保證每日的驗收引擎
+- **briefing**：`Step 0.7` 驗收（`due` → 抓數 → `resolve`）+ 收尾登錄（`list` → `add`）— 每日驗收引擎
+- **stock-analysis / crypto-analysis**：收尾登錄帶觸發點的 thesis（`list` → `add`）
+- 全部共用同一帳本與工具
 
 ## Source 分類 + `signal-inference` 慣例
 
@@ -107,8 +107,8 @@ python3 tools/thesis_ledger.py stats [--ticker MU] [--source briefing] [--since 
 | source | 說明 |
 |--------|------|
 | `briefing` | 由每日 briefing skill 登錄（Section 8 / Step 0.7） |
-| `portfolio-review` | 由組合審查登錄（Step 0.6） |
 | `stock-analysis` | 由個股深度分析登錄（Step 4a writer） |
+| `crypto-analysis` | 由加密分析登錄（Step 6 writer） |
 | `signal-inference` | **由訊號推導登錄**（news body / SEC 8-K / 逐字稿量化信號 → thesis 轉換） |
 
 ### `signal-inference` 流程 + 反幻覺規則

@@ -9,12 +9,11 @@ model: claude-opus-4-8
 
 Evaluate options strategies for a given ticker with risk/reward analysis.
 
-## Step 0: 配置同步 & 倉位偵測
+## Step 0: 配置同步 & watchlist
 
-執行 CLAUDE.md 的 Step 0 統一規範（0a → 0b → 0c → 0d → **0e**）。
+執行 CLAUDE.md 的 Step 0 統一規範（0a → 0b → **0e**）。
 - 讀 `plan.md` + `feedback/*.md`（必做）；了解此標的在計畫中的進場策略與 strikes
-- 呼叫 `get_account_position` 取即時持倉（確認現有部位與資金狀況）
-- 今日 journal 不存在 → 執行 gap-fill + 變動偵測 + 自動建立 journal
+- 讀 `watchlist.md`（CLAUDE.md Step 0b）— 確認是否已持有此標的（covered call / PMCC 等需現股）。watchlist 有 `shares` → 視為持有；無 → 視為新倉並標記「未持有現股」
 - **0e 第一性原理紀律**：在 Recommendation 之前必須完成「方向 thesis / 證偽條件 / IV 機率分布」三題（見 CLAUDE.md 0e）
 
 ---
@@ -186,8 +185,8 @@ For stocks that are overbought or above target price:
 - 分析師中位 PT：$XXX
 - 技術面：RSI / 趨勢 / 距 52W 高 / R1 / S1 / SMA50
 - 近期催化：[財報日、產業事件]
-- 配置上下文：用戶帳戶 ~$XXX，Quarter-Kelly 單筆上限 5%（~$XX,XXX）
-- 用戶持倉：[已持有 X 股 / 未持有]
+- 配置上下文：Quarter-Kelly 單筆上限 5%（若 watchlist/plan 有帳戶規模則換算金額，否則以 % 表示）
+- 用戶持倉（來自 watchlist）：[已持有 X 股 / 未持有]
 
 **可選 strike 範圍：**
 [列出該策略下合理的 3-5 個 strike + DTE 組合，不標註哪個是 Claude 選]

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
 generate_html.py — Convert Markdown reports to self-contained HTML and optionally
-push to the private fadacai-reports repo for Cloudflare Pages hosting.
+push to a private reports repo for static hosting (e.g. Netlify).
 
 Usage (push 預設開啟；加 --no-push 只存本地不上線):
   python3 tools/generate_html.py briefing 2026-06-10 [--no-push]
-  python3 tools/generate_html.py portfolio-review briefing-out/portfolio-review-2026-06-07.md [--no-push]
   python3 tools/generate_html.py stock-analysis briefing-out/stock-analysis-NVDA-2026-06-10.md [--no-push]
+  python3 tools/generate_html.py crypto-analysis briefing-out/crypto-analysis-BTC-2026-06-10.md [--no-push]
   python3 tools/generate_html.py options-strategy briefing-out/options-strategy-NVDA-2026-06-10.md [--no-push]
 
 Environment (.env):
   REPORT_SITE_TOKEN      — 32-hex token used as URL directory (security by obscurity)
-  REPORT_SITE_URL        — base URL e.g. https://fadacai-reports.pages.dev
+  REPORT_SITE_URL        — base URL e.g. https://reports.example.com
   REPORTS_REPO_PATH      — absolute path to local fadacai-reports clone
 
 Returns exit code:
@@ -392,7 +392,7 @@ def colorize_pct(html: str) -> str:
 
 
 # ── Tier ranking (briefing only) ──────────────────────────────────────────────
-TIER_RANK: dict[str, int] = {"quick": 1, "telegram": 2, "full": 3, "deep": 4}
+TIER_RANK: dict[str, int] = {"quick": 1, "push": 2, "telegram": 2, "full": 3, "deep": 4}
 
 
 def read_tier_from_html(html_path: Path) -> int:
@@ -414,8 +414,8 @@ def read_tier_from_txt(date_str: str) -> str:
 # ── Report type helpers ────────────────────────────────────────────────────────
 TYPE_LABELS = {
     "briefing": "每日報告",
-    "portfolio-review": "組合審查",
     "stock-analysis": "個股分析",
+    "crypto-analysis": "加密分析",
     "options-strategy": "選擇權策略",
 }
 
@@ -432,8 +432,8 @@ def infer_type_and_name(report_type: str, src_path: Path, date_str: str = "") ->
 def build_index(token_dir: Path) -> None:
     sections: dict[str, list[tuple[str, str, str]]] = {
         "briefing": [],
-        "portfolio-review": [],
         "stock-analysis": [],
+        "crypto-analysis": [],
         "options-strategy": [],
     }
     total = 0
@@ -477,10 +477,15 @@ def build_index(token_dir: Path) -> None:
 # ── Push to reports repo ───────────────────────────────────────────────────────
 def push_to_repo(repo_path: Path, date_label: str, report_type: str) -> bool:
     try:
-        env = {**os.environ, "GIT_AUTHOR_NAME": "PatrickSUDO",
-               "GIT_AUTHOR_EMAIL": "patricksuph@gmail.com",
-               "GIT_COMMITTER_NAME": "PatrickSUDO",
-               "GIT_COMMITTER_EMAIL": "patricksuph@gmail.com"}
+        # Commit identity for the reports repo: override via .env if set,
+        # otherwise fall back to whatever git config the reports repo already has.
+        env = {**os.environ}
+        _gname = os.environ.get("REPORTS_GIT_NAME", "")
+        _gemail = os.environ.get("REPORTS_GIT_EMAIL", "")
+        if _gname:
+            env["GIT_AUTHOR_NAME"] = env["GIT_COMMITTER_NAME"] = _gname
+        if _gemail:
+            env["GIT_AUTHOR_EMAIL"] = env["GIT_COMMITTER_EMAIL"] = _gemail
         subprocess.run(["git", "-C", str(repo_path), "add", "-A"], check=True, env=env)
         result = subprocess.run(
             ["git", "-C", str(repo_path), "status", "--porcelain"],
@@ -518,7 +523,7 @@ def main() -> int:
     clean_args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if len(clean_args) < 2:
         print("Usage: generate_html.py <type> <date-or-path> [--no-push]")
-        print("  type: briefing | portfolio-review | stock-analysis | options-strategy")
+        print("  type: briefing | stock-analysis | crypto-analysis | options-strategy")
         print("  （預設自動 push 到 reports repo；加 --no-push 只存本地）")
         return 1
 

@@ -1,32 +1,29 @@
 #!/usr/bin/env python3
 """
-send_briefing.py — Push daily briefing to Telegram + email via SMTP.
+send_briefing.py — Push daily briefing to a Discord channel via webhook.
 
 Usage:
   python3 tools/send_briefing.py YYYY-MM-DD   # send specific date
   python3 tools/send_briefing.py latest        # send most recent files
 
 Environment (from .env or shell):
-  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-  SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, EMAIL_TO
-  DRY_RUN=1        # print what would be sent, don't actually send
-  RETRY_MAX=3      # retry count on send failure (default 3)
+  DISCORD_WEBHOOK_URL   # https://discord.com/api/webhooks/<id>/<token>
+  DRY_RUN=1             # print what would be sent, don't actually send
+  RETRY_MAX=3           # retry count on send failure (default 3)
+
+Reports-site (optional; appends a 🔗 link if all three are set):
+  REPORT_SITE_TOKEN, REPORT_SITE_URL, REPORTS_REPO_PATH
 """
 
 import json
 import os
-import re
-import smtplib
 import ssl
 import subprocess
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
-from datetime import date, datetime, timezone
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Path setup ─────────────────────────────────────────────────────────────
@@ -61,31 +58,30 @@ def require(key: str) -> str:
 # ── File resolution ─────────────────────────────────────────────────────────
 def resolve_date(arg: str) -> str:
     if arg == "latest":
-        files = sorted(BRIEFING_OUT.glob("*-telegram.txt"))
+        files = sorted(BRIEFING_OUT.glob("*-discord.txt"))
         if not files:
-            raise FileNotFoundError("No telegram files found in briefing-out/")
-        return files[-1].name.replace("-telegram.txt", "")
+            raise FileNotFoundError("No discord files found in briefing-out/")
+        return files[-1].name.replace("-discord.txt", "")
     # validate YYYY-MM-DD
     datetime.strptime(arg, "%Y-%m-%d")
     return arg
 
 
-def read_files(date_str: str) -> tuple[str, str]:
-    tg_path = BRIEFING_OUT / f"{date_str}-telegram.txt"
-    full_path = BRIEFING_OUT / f"{date_str}-full.md"
-    if not tg_path.exists():
-        raise FileNotFoundError(f"Not found: {tg_path}")
-    if not full_path.exists():
-        raise FileNotFoundError(f"Not found: {full_path}")
-    return tg_path.read_text(encoding="utf-8"), full_path.read_text(encoding="utf-8")
+def read_push_text(date_str: str) -> str:
+    """Read the plain-text push payload. Falls back to the legacy -telegram.txt name."""
+    discord_path = BRIEFING_OUT / f"{date_str}-discord.txt"
+    legacy_path = BRIEFING_OUT / f"{date_str}-telegram.txt"
+    path = discord_path if discord_path.exists() else legacy_path
+    if not path.exists():
+        raise FileNotFoundError(f"Not found: {discord_path}")
+    return path.read_text(encoding="utf-8")
 
 
-# ── Telegram ─────────────────────────────────────────────────────────────────
-TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
-MAX_TG_CHARS = 4096
+# ── Discord webhook ──────────────────────────────────────────────────────────
+MAX_DISCORD_CHARS = 2000  # Discord hard limit per message content
 
 
-def split_message(text: str, limit: int = MAX_TG_CHARS) -> list[str]:
+def split_message(text: str, limit: int = MAX_DISCORD_CHARS) -> list[str]:
     if len(text) <= limit:
         return [text]
     parts = []
@@ -102,121 +98,45 @@ def split_message(text: str, limit: int = MAX_TG_CHARS) -> list[str]:
     return parts
 
 
-def send_telegram(text: str, dry_run: bool = False) -> None:
-    token = require("TELEGRAM_BOT_TOKEN")
-    chat_id = require("TELEGRAM_CHAT_ID")
-    url = TELEGRAM_API.format(token=token)
+def send_discord(text: str, dry_run: bool = False) -> None:
+    webhook = require("DISCORD_WEBHOOK_URL")
+    ctx = ssl._create_unverified_context()
+    chunks = split_message(text)
 
-    for i, part in enumerate(split_message(text)):
+    for i, part in enumerate(chunks):
         if dry_run:
-            print(f"[DRY-RUN] Telegram → chat_id={chat_id} part {i+1}/{len(split_message(text))}")
+            print(f"[DRY-RUN] Discord webhook ← part {i+1}/{len(chunks)}")
             print(part[:200] + ("…" if len(part) > 200 else ""))
             continue
-        payload = json.dumps({"chat_id": chat_id, "text": part}).encode()
-        req = urllib.request.Request(url, data=payload,
-                                     headers={"Content-Type": "application/json"})
-        ctx = ssl._create_unverified_context()
-        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
-            result = json.loads(resp.read())
-            if not result.get("ok"):
-                raise RuntimeError(f"Telegram API error: {result}")
-
-
-# ── Markdown → plain text ────────────────────────────────────────────────────
-def md_to_plain(text: str) -> str:
-    """Strip markdown syntax so plain-text email clients (Gmail) read cleanly."""
-    out = []
-    for line in text.splitlines():
-        stripped = line.strip()
-
-        # Table separator row  |---|---|  → skip entirely
-        if re.match(r'^\|[\s\-|:]+\|?\s*$', stripped):
-            continue
-
-        # Table data row  |col1|col2|  → cells joined by two spaces
-        if stripped.startswith('|') and stripped.endswith('|'):
-            cells = [c.strip() for c in stripped[1:-1].split('|')]
-            out.append('  '.join(cells))
-            continue
-
-        # ATX headers  ## Title
-        m = re.match(r'^(#{1,6})\s+(.*)', line)
-        if m:
-            level, title = len(m.group(1)), m.group(2)
-            # strip inline markers inside the title
-            title = re.sub(r'\*+([^*]+)\*+', r'\1', title)
-            title = re.sub(r'_([^_]+)_', r'\1', title)
-            if level == 1:
-                out.append(title.upper())
-                out.append('=' * len(title))
-            elif level == 2:
-                out.append(f'\n{title}')
-                out.append('─' * len(title))
-            else:
-                out.append(title)
-            continue
-
-        # Horizontal rule  ---  ***
-        if re.match(r'^[-*_]{3,}\s*$', stripped):
-            out.append('─' * 40)
-            continue
-
-        # Blockquote  > text  → strip leading >
-        line = re.sub(r'^>\s?', '', line)
-
-        # Bold / italic  **x**, *x*, _x_
-        line = re.sub(r'\*{2,3}([^*\n]+)\*{2,3}', r'\1', line)
-        line = re.sub(r'\*([^*\n]+)\*', r'\1', line)
-        line = re.sub(r'_([^_\n]+)_', r'\1', line)
-
-        # Inline code  `x`
-        line = re.sub(r'`([^`]+)`', r'\1', line)
-
-        # Links  [text](url)  → text
-        line = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', line)
-
-        # Unordered list markers  - / *
-        line = re.sub(r'^(\s*)[-*]\s+', r'\1• ', line)
-
-        out.append(line)
-
-    return '\n'.join(out)
-
-
-# ── Email (SMTP) ─────────────────────────────────────────────────────────────
-def send_email(telegram_text: str, full_md: str, date_str: str,
-               dry_run: bool = False) -> None:
-    smtp_host = require("SMTP_HOST")
-    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
-    smtp_user = require("SMTP_USER")
-    smtp_pass = require("SMTP_PASS")
-    email_from = os.environ.get("EMAIL_FROM", smtp_user)
-    email_to = require("EMAIL_TO")
-
-    subject = f"📊 Daily Briefing {date_str}"
-    body_plain = f"{telegram_text}\n\n{'─' * 40}\n\n{md_to_plain(full_md)}"
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = email_from
-    msg["To"] = email_to
-    msg.attach(MIMEText(body_plain, "plain", "utf-8"))
-
-    if dry_run:
-        print(f"[DRY-RUN] Email → {email_to}  subject: {subject}")
-        print(telegram_text[:200] + "…")
-        return
-
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(smtp_user, smtp_pass)
-        server.sendmail(email_from, [email_to], msg.as_string())
+        payload = json.dumps({"content": part}).encode()
+        req = urllib.request.Request(
+            webhook, data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                # Discord returns 204 No Content on success
+                if resp.status not in (200, 204):
+                    raise RuntimeError(f"Discord webhook HTTP {resp.status}")
+        except urllib.error.HTTPError as e:
+            # 429 = rate limited; honour retry_after then bubble up to with_retry
+            if e.code == 429:
+                try:
+                    info = json.loads(e.read())
+                    wait = float(info.get("retry_after", 1.0))
+                except Exception:
+                    wait = 1.0
+                time.sleep(min(wait, 10))
+                raise RuntimeError("Discord rate limited (429)")
+            raise RuntimeError(f"Discord webhook HTTP {e.code}: {e.reason}")
+        # gentle pacing between chunks to avoid burst rate limit
+        if i < len(chunks) - 1:
+            time.sleep(0.6)
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 def already_sent_today(date_str: str) -> bool:
-    """Return True if send-log already has a fully successful (non-dry-run) entry for date_str."""
+    """Return True if send-log already has a successful (non-dry-run) entry for date_str."""
     if not LOG_FILE.exists():
         return False
     for line in LOG_FILE.read_text().splitlines():
@@ -224,8 +144,7 @@ def already_sent_today(date_str: str) -> bool:
             entry = json.loads(line)
             if (entry.get("date") == date_str
                     and not entry.get("dry_run")
-                    and entry.get("telegram") == "ok"
-                    and entry.get("email") == "ok"):
+                    and entry.get("discord") == "ok"):
                 return True
         except json.JSONDecodeError:
             continue
@@ -301,12 +220,12 @@ def main() -> int:
 
     try:
         date_str = resolve_date(sys.argv[1])
-        tg_text, full_md = read_files(date_str)
+        push_text = read_push_text(date_str)
     except (FileNotFoundError, ValueError) as e:
         print(f"Error: {e}")
         return 1
 
-    # Guard: skip if already fully sent today (prevents duplicate from runner retry)
+    # Guard: skip if already successfully sent today (prevents duplicate from runner retry)
     if not dry_run and already_sent_today(date_str):
         print(f"⏭️  {date_str} 已成功發送過，跳過重複發送")
         return 0
@@ -315,48 +234,32 @@ def main() -> int:
         "date": date_str,
         "sent_at": datetime.now(tz=timezone.utc).isoformat(),
         "dry_run": dry_run,
-        "telegram": None,
-        "email": None,
+        "discord": None,
         "html": None,
     }
 
     # ── HTML generation (best-effort, runs before send so link can be appended)
     html_url = _generate_html(date_str, dry_run)
     if html_url:
-        tg_text = tg_text.rstrip() + f"\n\n🔗 網頁版：{html_url}"
+        push_text = push_text.rstrip() + f"\n\n🔗 網頁版：{html_url}"
         log_entry["html"] = "ok"
     else:
         log_entry["html"] = "failed" if html_url is None else "skipped"
 
-    # ── Telegram
-    tg_ok = with_retry(
-        lambda: send_telegram(tg_text, dry_run),
-        "Telegram", max_retries
+    # ── Discord
+    discord_ok = with_retry(
+        lambda: send_discord(push_text, dry_run),
+        "Discord", max_retries
     )
-    log_entry["telegram"] = "ok" if tg_ok else "failed"
-    if not tg_ok:
-        # 失敗只記 log，不推 Telegram 錯誤訊息（用戶偏好：Telegram 只收正式 briefing）
-        print(f"[send_briefing] {date_str} Telegram 推送失敗（已重試 {max_retries} 次），詳見 send-log.jsonl")
-
-    # ── Email (independent of Telegram success)
-    email_ok = with_retry(
-        lambda: send_email(tg_text, full_md, date_str, dry_run),
-        "Email", max_retries
-    )
-    log_entry["email"] = "ok" if email_ok else "failed"
+    log_entry["discord"] = "ok" if discord_ok else "failed"
 
     write_log(log_entry)
 
-    if tg_ok and email_ok:
-        print(f"✅ {date_str} Telegram 已發送 / Email 已寄出")
+    if discord_ok:
+        print(f"✅ {date_str} Discord 已發送")
         return 0
-    elif tg_ok or email_ok:
-        print(f"⚠️ {date_str} 部分成功 — "
-              f"Telegram: {'ok' if tg_ok else 'failed'}, "
-              f"Email: {'ok' if email_ok else 'failed'}")
-        return 1
     else:
-        print(f"❌ {date_str} Telegram + Email 均失敗")
+        print(f"❌ {date_str} Discord 推送失敗（已重試 {max_retries} 次），詳見 send-log.jsonl")
         return 2
 
 

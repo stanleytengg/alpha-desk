@@ -441,6 +441,7 @@ class TestReturnStructure(unittest.TestCase):
         "own_fwdEPS", "projected_revenue", "revenue_cagr", "g_next",
         "macro_adj", "g_adj", "net_margin", "shares_outstanding",
         "base_fair_pe_approx", "own_target_price", "confidence", "notes",
+        "a3_fwdeps_source",
     }
 
     def test_ok_result_has_all_keys(self):

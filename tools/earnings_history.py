@@ -11,7 +11,7 @@ TTL:
   dates:   24 hours (next date may flip BMO/AMC or get confirmed)
 
 Ticker source priority:
-  1. ROOT/journal/<latest>.md  (parse holdings table)
+  1. ROOT/watchlist.md  (parse the equity table)
   2. EARNINGS_TICKERS env var (comma-separated)
   3. abort with warning if both empty
 
@@ -40,7 +40,9 @@ ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = ROOT / "briefing-out" / "cache"
 HIST_FILE = CACHE_DIR / "earnings-history.json"
 DATES_FILE = CACHE_DIR / "earnings-dates.json"
-JOURNAL_DIR = ROOT / "journal"
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from watchlist_tickers import get_tickers as _get_watchlist_tickers
 
 # ── Config ─────────────────────────────────────────────────────────────────
 CACHE_HIST_TTL_HOURS = 24 * 7  # 7 days
@@ -63,62 +65,9 @@ def load_env():
 
 
 # ── Ticker discovery ───────────────────────────────────────────────────────
-TICKER_RE = re.compile(r"^\|\s*([A-Z]{1,5})\s*\|")
-
-
-def journals_newest_first() -> list[Path]:
-    if not JOURNAL_DIR.exists():
-        return []
-    return sorted(JOURNAL_DIR.glob("[0-9]*-[0-9]*-[0-9]*.md"), reverse=True)
-
-
-def parse_journal_tickers(path: Path) -> list[str]:
-    tickers: list[str] = []
-    seen: set[str] = set()
-    in_holdings_table = False
-    for raw in path.read_text().splitlines():
-        line = raw.strip()
-        if "持倉快照" in line or "倉位快照" in line or "持倉清單" in line:
-            in_holdings_table = True
-            continue
-        if in_holdings_table and line.startswith("##"):
-            in_holdings_table = False
-        if not in_holdings_table:
-            continue
-        m = TICKER_RE.match(raw)
-        if m:
-            sym = m.group(1)
-            # skip table header words
-            if sym in ("LEAPS",):
-                continue
-            if sym not in seen:
-                tickers.append(sym)
-                seen.add(sym)
-    return tickers
-
-
 def get_tickers() -> list[str]:
-    # Walk journals newest→oldest until one yields a holdings snapshot.
-    # /briefing's auto-created journals are often delta-only (no 持倉快照
-    # table), so the newest file frequently parses to zero tickers — fall back
-    # to the most recent journal that actually has the snapshot instead of
-    # dropping straight to the env/empty path.
-    journals = journals_newest_first()
-    for idx, journal in enumerate(journals):
-        ts = parse_journal_tickers(journal)
-        if ts:
-            note = "" if idx == 0 else f" (skipped {idx} newer journal(s) w/o snapshot)"
-            print(f"📋 tickers from {journal.name}: {len(ts)} found{note}")
-            return ts
-    if journals:
-        print(f"⚠️  no snapshot table in any of {len(journals)} journal(s)")
-    env_tickers = os.environ.get("EARNINGS_TICKERS", "").strip()
-    if env_tickers:
-        ts = [s.strip().upper() for s in env_tickers.split(",") if s.strip()]
-        print(f"📋 tickers from EARNINGS_TICKERS env: {len(ts)} found")
-        return ts
-    print("⚠️  no tickers found (journals had no snapshot + EARNINGS_TICKERS unset)")
-    return []
+    # Equities only (crypto has no earnings); falls back to EARNINGS_TICKERS env.
+    return _get_watchlist_tickers(ROOT, env_var="EARNINGS_TICKERS", include_crypto=False)
 
 
 # ── Cache helpers ──────────────────────────────────────────────────────────

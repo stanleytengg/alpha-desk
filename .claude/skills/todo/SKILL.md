@@ -7,23 +7,20 @@ model: claude-sonnet-4-6
 
 # Portfolio Action Todo
 
-根據當前持倉、投資計畫、選擇權狀態，生成有優先順序的行動清單。
+根據 watchlist（含選填持倉）、投資計畫、選擇權狀態，生成有優先順序的行動清單。
 
 ## 資料讀取順序
 
 ### Step 0：CLAUDE.md 統一規範（含 0e 第一性原理紀律）
-執行 0a → 0b → 0c → 0d → **0e**。每個 🔴/🟡/🟢 行動項目都必須通過第一性檢查（thesis / 證偽條件 / 機率），否則該項應移到「⏸ 不動」並註明缺乏明確 thesis。
+執行 0a → 0b → **0e**。每個 🔴/🟡/🟢 行動項目都必須通過第一性檢查（thesis / 證偽條件 / 機率），否則該項應移到「⏸ 不動」並註明缺乏明確 thesis。
 
-### Step 1：取得即時持倉（必做）
+### Step 1：載入 watchlist（必做）
 同時執行：
-- `mcp__firstrade-server__get_account_position` — 即時持倉（股票 + 選擇權）
+- 讀取 `watchlist.md`（CLAUDE.md Step 0b）— 追蹤標的 + 選填持倉（股數/成本/加密 qty）
 - 讀取 `plan.md` — 計畫中待辦事項
+- 選擇權急迫性段落只在 watchlist 有記錄選擇權部位時適用；無則略過
 
-### Step 2：讀取 journal（快速掃描）
-- 找今天的 `journal/YYYY-MM-DD.md`
-- 若存在，掃描「已執行」事項，避免重複建議
-
-### Step 3：技術面補充（選擇性，快速版跳過）
+### Step 2：技術面補充（選擇性，快速版跳過）
 僅對「需要確認進場時機」的標的，呼叫：
 - `mcp__technical-mcp__get_batch_indicators` — 快速取 RSI/動能
 - 目的是確認「現在進場還是等」
@@ -159,8 +156,8 @@ model: claude-sonnet-4-6
 呼叫 Codex（用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI）：
 
 ```
-我目前的美股持倉（含市值占比）：
-[插入持倉表，由 Step 1 的 get_account_position 取得]
+我目前追蹤的標的（watchlist；有持倉資料者附市值占比）：
+[插入 watchlist 表，由 Step 1 讀 watchlist.md 取得]
 
 我的投資風格：
 - 主軸：AI/半導體、高成長科技；汰弱留強，集中持倉
@@ -185,8 +182,8 @@ model: claude-sonnet-4-6
 **Step 2 — 呼叫 Codex（用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI）：**
 
 ```
-我的美股持倉（含市值占比 + 板塊歸屬）：
-[持倉表]
+我追蹤的標的（watchlist；有持倉資料者附市值占比 + 板塊歸屬）：
+[watchlist 表]
 
 當前板塊輪動數據（vs SPY）：
 [get_sector_rotation 完整輸出]

@@ -13,17 +13,19 @@ model: claude-haiku-4-5-20251001
 
 ### 1. 平行測試所有 MCP Server
 
-盡可能同時呼叫以下 7 個測試，使用最簡單的工具確認連線：
+盡可能同時呼叫以下測試，使用最簡單的工具確認連線：
 
 | # | Server | 測試工具 | 測試呼叫 |
 |---|--------|---------|---------|
-| 1 | firstrade-server | `get_account_balance` | `()` |
-| 2 | yfinance-advanced | `get_stock_info` | `("AAPL")` |
-| 3 | sec-edgar-mcp | `get_company_info` | `("AAPL")` |
-| 4 | fmp-mcp | `getCompanyProfile` | `("AAPL")` |
-| 5 | technical-mcp | `get_technical_indicators` | `("AAPL")` |
-| 6 | eodhd-mcp | `get_sentiment_trend` | `("AAPL.US", 7)` |
-| 7 | polymarket-mcp | `get_trending_markets` | `()` |
+| 1 | yfinance-advanced | `get_stock_info` | `("AAPL")` |
+| 2 | sec-edgar-mcp | `get_company_info` | `("AAPL")` |
+| 3 | fmp-mcp | `getCompanyProfile` | `("AAPL")` |
+| 4 | technical-mcp | `get_technical_indicators` | `("AAPL")` |
+| 5 | eodhd-mcp | `get_sentiment_trend` | `("AAPL.US", 7)` |
+| 6 | polymarket-mcp | `get_trending_markets` | `()` |
+| 7 | coingecko *(選用)* | `get_simple_price` | `("bitcoin")` |
+
+> coingecko 為選用的加密貨幣研究來源；若未設定則標記「⚪ 未配置」而非失敗。
 
 ### 2. 判定狀態
 
@@ -39,15 +41,15 @@ model: claude-haiku-4-5-20251001
 
 | Server | 狀態 | 延遲 | 備註 |
 |--------|------|------|------|
-| firstrade-server | ✅ Healthy | ~Xs | 即時持倉來源 |
-| yfinance-advanced | ✅ Healthy | ~Xs | — |
+| yfinance-advanced | ✅ Healthy | ~Xs | 主要報價/基本面來源 |
 | sec-edgar-mcp | ✅ Healthy | ~Xs | — |
 | fmp-mcp | ✅ Healthy | ~Xs | Free tier |
 | technical-mcp | ✅ Healthy | ~Xs | — |
 | eodhd-mcp | ❌ Failed | — | 連線失敗 |
 | polymarket-mcp | ✅ Healthy | ~Xs | Demo mode |
+| coingecko | ⚪ 未配置 | — | 選用（加密貨幣）|
 
-健康: X/7 | 異常: X/7
+健康: X/N | 異常: X/N（coingecko 未配置不計入分母）
 ```
 
 ### 4. 失敗時的處理

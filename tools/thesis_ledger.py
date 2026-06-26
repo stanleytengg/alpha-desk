@@ -5,7 +5,7 @@ due date, and report hit rate.
 
 Deterministic by design: dedup, collision guard, due/expiry detection, status
 transitions, date arithmetic, and schema validation all live here. The calling
-skill (briefing / portfolio-review) only supplies the reasoning judgment
+skill (briefing / stock-analysis / crypto-analysis) only supplies the reasoning judgment
 ("given the actual numbers, did the thesis pass?").
 
 Storage: research/thesis-ledger.json  ({"theses": [ ... ]})

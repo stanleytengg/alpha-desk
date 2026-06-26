@@ -1,47 +1,48 @@
 ---
 name: briefing
-description: "Daily portfolio briefing with 3 tiers: /briefing (quick ~1min), /briefing full (~3min), /briefing deep (~5min). Replaces daily-briefing."
+description: "Daily watchlist briefing (stocks + crypto) with tiers: /briefing (quick ~1min), /briefing full (~3min), /briefing deep (~5min), /briefing push (Discord ~2-3min)."
 user_invocable: true
 model: claude-opus-4-8
 ---
 
-# Portfolio Briefing
+# Watchlist Briefing
 
-三層結構的每日投資組合簡報，取代原 `/daily-briefing`。
+多層結構的每日 watchlist 簡報（股票 + 加密），以 `watchlist.md` 為標的來源。
 
 ## Arguments
 - `/briefing` → Quick（~1 分鐘）
 - `/briefing full` → Quick + Full（~3 分鐘）
 - `/briefing deep` → Quick + Full + Deep（~5 分鐘）
-- `/briefing telegram` → Telegram Push Tier（~2-3 分鐘）— 盤中推送專用，不跑 Phase 1-3
+- `/briefing push` → Discord Push Tier（~2-3 分鐘）— 盤中推送專用，不跑 Phase 1-3
 
 ### --send 旗標
 任何 tier 加上 `--send` 會在 tier 執行完後：
 1. 把完整 briefing markdown 寫到 `briefing-out/YYYY-MM-DD-full.md`（Write tool）
-2. 把 Telegram 格式純文字寫到 `briefing-out/YYYY-MM-DD-telegram.txt`（Write tool）
-3. 呼叫 `python3 tools/send_briefing.py YYYY-MM-DD`（Bash tool）推送至 Telegram + Email
-   - send_briefing.py 內部自動呼叫 `generate_html.py`，push HTML 到 reports repo，並在 Telegram 訊息末加上網頁連結
+2. 把 Discord 推送純文字寫到 `briefing-out/YYYY-MM-DD-discord.txt`（Write tool）
+3. 呼叫 `python3 tools/send_briefing.py YYYY-MM-DD`（Bash tool）推送至 Discord（webhook）
+   - send_briefing.py 內部自動呼叫 `generate_html.py`，push HTML 到 reports repo，並在 Discord 訊息末加上網頁連結
+   - 訊息 >2000 字會自動分段（Discord 單則上限）
 
-`briefing telegram` 沒有 `--send` 時：只寫 `briefing-out/` 兩個檔案，不發送。
+`briefing push` 沒有 `--send` 時：只寫 `briefing-out/` 兩個檔案，不發送。
 若需手動生成 HTML（不發送）：`python3 tools/generate_html.py briefing YYYY-MM-DD [--push]`
 
 ### 執行模型建議
 - `/briefing`（quick）→ Sonnet 4.6（純彙整；session 已長則先 `/compact`）
-- `/briefing telegram` → Sonnet 4.6（每日 launchd 自動推送，成本敏感，固定 Sonnet；週五 `--codex` 另走 gpt-5.5）
+- `/briefing push` → Sonnet 4.6（每日 launchd 自動推送，成本敏感，固定 Sonnet；週五 `--codex` 另走 Codex 第二意見）
 - `/briefing full` → Opus 4.8（中等綜合 + Verdict；Phase 2 subagent 已外包 Haiku）
 - `/briefing deep` → Opus 4.8（深度合成 + Codex 整合 + 機率/EV）
 
-切換方式：`/model sonnet`、`/model opus` 或 `/model fable` 後執行 skill。
+切換方式：`/model sonnet`、`/model opus` 後執行 skill。
 
 ---
 
-## Step 0: 配置同步 & 倉位偵測
+## Step 0: 配置同步 & 載入 watchlist
 
-執行 CLAUDE.md 的 Step 0 統一規範（0a → 0b → 0c → 0d → **0e**）。
+執行 CLAUDE.md 的 Step 0 統一規範（0a → 0b → **0e**）。
 - 讀 `plan.md` + `feedback/*.md`（必做）
-- 呼叫 `get_account_position` 取即時持倉
-- 今日 journal 不存在 → 執行 gap-fill + 變動偵測 + 自動建立 journal
-- 若偵測到的變動對應 plan.md 待辦項 → 在 Phase 1 Step 1 標記
+- 讀 `watchlist.md`（CLAUDE.md Step 0b）— 追蹤標的 + 選填持倉。**此即所有後續分析的標的集合。**
+  - watchlist 有 `shares`/`avg_cost`（或加密 `qty`）→ 算市值權重、集中度、未實現損益
+  - 無持倉資料 → 略過權重/集中度/損益段，僅做標的層級研究（估值/技術/catalyst），標「（無持倉資料）」
 - **0e 第一性原理紀律**：在 Quick Take 之前必須完成「市場主題 thesis / 證偽條件 / 機率分布」三題（見 CLAUDE.md 0e）
 
 ## Step 0.5: Macro Snapshot Load（所有 Phase / Tier 共用）
@@ -72,12 +73,12 @@ Read briefing-out/cache/earnings-dates.json
 ```
 
 判定：
-- `status == "ok"` → 使用，後續 Section 4.5 與 Telegram tier earnings 區直接引用
+- `status == "ok"` → 使用，後續 Section 4.5 與 Push tier earnings 區直接引用
 - `status == "skipped"` / mtime stale → 標記 `⚠️ Earnings cache stale` 但仍使用最後一份
 
 這兩份資料用於：
 - Section 4.5 Earnings Calendar 表格的 `Trailing 8Q beat` / `avg surprise` 欄位
-- Telegram tier `📅 Earnings This Week` 加 beat rate 標註
+- Push tier `📅 Earnings This Week` 加 beat rate 標註
 - `probability-honesty-checker` Step 1d「Base rate」備選來源（EODHD fundamentals-snapshot 為首選）
 
 ---
@@ -92,7 +93,7 @@ Read briefing-out/cache/fundamentals-snapshot.json
 
 判定：
 - `status == "ok"` 且 mtime < 30h → **使用**，供估值區塊、probability-honesty-checker 1d/1h 使用
-- `status == "skipped"` / mtime > 30h / 缺失 → 標記 `⚠️ Fundamentals cache stale/missing`；Deep tier 強制派 subagent 刷新，Quick/Telegram 標旗但繼續
+- `status == "skipped"` / mtime > 30h / 缺失 → 標記 `⚠️ Fundamentals cache stale/missing`；Deep tier 強制派 subagent 刷新，Quick/Push 標旗但繼續
 
 **EODHD 資料缺口處理（必守）：**
 - `highlights.pe_ratio == 0.0` 或 `peg_ratio == 0.0` → 丟棄該三錨點錨，標 `(anchor unavailable)`，不進 Fair PE 計算
@@ -126,8 +127,21 @@ Read briefing-out/cache/news-articles.json
 判定：
 - `status == "ok"` 且 mtime < 8h 且 `"content" in fields_available` → **使用**，P3 信號擷取（Deep tier §9.5）可讀 body
 - `status == "ok"` 但 `"content" not in fields_available` → **有限使用**（只有 headline+sentiment，P3 只能做 headline 掃描，標 `⚠️ news body 不可用`）
-- `status == "skipped"` / mtime > 8h / 缺失 → 標記 `⚠️ News cache stale/missing`，Quick/Full/Telegram 略過 P3 信號擷取，Deep tier 繼續（P3 降級為僅 SEC/逐字稿）
-- Quick / Full / Telegram tier：**不讀 body，不做信號擷取**；news cache 僅供 Deep tier §9.5 使用
+- `status == "skipped"` / mtime > 8h / 缺失 → 標記 `⚠️ News cache stale/missing`，Quick/Full/Push 略過 P3 信號擷取，Deep tier 繼續（P3 降級為僅 SEC/逐字稿）
+- Quick / Full / Push tier：**不讀 body，不做信號擷取**；news cache 僅供 Deep tier §9.5 使用
+
+## Step 0.68: Crypto Snapshot Load（watchlist 有加密標的時，cache-only）
+
+讀 cache（由 `tools/fetch_crypto.py` 預載 — CoinGecko；選用）：
+
+```
+Read briefing-out/cache/crypto-snapshot.json
+```
+
+判定：
+- `status == "ok"` → 使用：在 Daily Snapshot / Movers 帶入加密標的（價格、市值、距 ATH、BTC 主導率）
+- `status == "skipped"` / 缺失 → 標 `⚠️ Crypto cache unavailable`，對加密標的改用 yfinance（`<SYM>-USD`）即時取價，或整段略過（watchlist 無加密標的時本步驟跳過）
+- 深入的 tokenomics/鏈上分析不在 briefing 範圍 → 引導用 `/crypto-analysis SYMBOL`
 
 ---
 
@@ -168,7 +182,7 @@ Read research/naked-call-watchlist.md
 用 `macro-snapshot.json`（10Y UST、VIX）+ `get_batch_indicators` 2 日技術確認，評估其 3 閘門狀態：
 - G1 10Y UST ≤4.35%：從 macro snapshot fed_funds 推估或 technical；G2 VIX ≤18：macro VIX；G3 目標 2 日收盤確認：batch indicator 技術
 - 更新 watchlist 閘門欄位 → 狀態進 Key Alerts（未達全過則 `🔒 LOCKED: G1/G2/G3 [狀態]`）
-- 3 閘門全過 → 輸出 `🎯 樂透閘門達標：{ticker} 可評估進場`，加入 Key Alerts actionable 與 Telegram T5/T6
+- 3 閘門全過 → 輸出 `🎯 樂透閘門達標：{ticker} 可評估進場`，加入 Key Alerts actionable 與 Push T5/T6
 - **日誌最後一行（auto-append）**：`--send` / launchd 路徑用 Write 追加今日欄位到 watchlist；互動 quick/full/deep 僅輸出提議行，不 Write
 
 **4. 輸出「📋 thesis 驗收」區塊**（接在 Key Alerts 後 / Quick Take 前）：
@@ -187,40 +201,37 @@ Read research/naked-call-watchlist.md
 
 ## Phase 1: Quick（永遠執行）
 
-### 1. Trade Journal Auto
-若 Step 0b 偵測到倉位變化，輸出差異表：
-
-```
-## ⚡ 倉位變動（vs 上次快照 YYYY-MM-DD）
-| 類型 | 操作 | 標的 | 變化 | 計畫對應 |
-```
-
-無變動則顯示「倉位無變化」。
-
-### 2. Daily Snapshot
+### 1. Daily Snapshot
 
 ```
 日期: YYYY-MM-DD
-組合市值: $XXX,XXX (日變動: +/- $X,XXX / +/- X.XX%)
-總損益: +/- $X,XXX (+/- X.XX%)
-持倉: XX 檔股票 + XX 個選擇權合約
+watchlist: XX 檔股票 + XX 個加密標的
 ```
 
-### 3. Today's Movers
-全持倉依日漲跌%排序：
+**若 watchlist 有持倉資料（shares/avg_cost/qty）**，額外輸出組合層級：
+```
+組合市值: $XXX,XXX (日變動: +/- $X,XXX / +/- X.XX%)
+總未實現損益: +/- $X,XXX (+/- X.XX%)
+```
+無持倉資料 → 略過組合市值/損益行，標「（watchlist 純追蹤，無持倉資料）」。
 
-| 標的 | 股數 | 現價 | 日漲跌% | 市值 | 總損益% |
+### 2. Today's Movers
+全 watchlist 標的依日漲跌%排序（有持倉者附股數/市值/未實現損益%欄）：
 
-> +2% 或 -2% 標記。
+| 標的 | 現價 | 日漲跌% | (股數) | (市值) | (未實現損益%) |
 
-### 4. Options Status
+> +2% 或 -2% 標記。括號欄位僅在該標的有持倉資料時填。
 
-**4a. 無現股標的價格確認：**
-比對選擇權持倉的 underlying ticker vs 現股持倉。若 underlying 沒有對應現股（如 CRWD、DDOG、GOOGL、LRCX、TSLA、TEAM），
+### 3. Options Status（僅在 watchlist 記有選擇權部位時）
+
+若 watchlist 沒有選擇權部位 → 整段略過。
+
+**3a. 無現股標的價格確認：**
+比對選擇權 underlying ticker vs watchlist 現股。若 underlying 沒有對應現股，
 使用 `mcp__technical-mcp__get_batch_indicators` 或 `mcp__yfinance-advanced__get_stock_info` 取得該標的目前現股價格。
 在 Options Status 表格中加入「標的現價」和「距 Strike %」欄位，方便判斷 ITM/OTM 狀態。
 
-**4b. Options 總覽表：**
+**3b. Options 總覽表：**
 
 | 合約 | 方向 | 到期日 | 剩餘天數 | 標的現價 | 距Strike% | 損益% | 狀態 |
 
@@ -615,7 +626,7 @@ python3 tools/thesis_ledger.py add --ticker <T> --slug <slug> \
 - 每筆最多 1 行，不展開全文；詳細論點讓用戶自行查帳本
 
 ### 15. 完整計畫對照
-portfolio-review 式的計畫執行進度表：
+完整計畫執行進度表：
 - 板塊佔比 vs 計畫目標的偏差分析
 - 所有待辦項目的執行狀態
 - 風險監控項目的當前狀態
@@ -625,21 +636,21 @@ portfolio-review 式的計畫執行進度表：
 
 ---
 
-## Telegram Tier（`/briefing telegram`）
+## Push Tier（`/briefing push`）
 
-**目的：** 每日盤中推送至 Telegram + Email 的精簡決策摘要。不跑 Phase 1-3 的完整分析，只抓推送所需的 7 個資料點，直接產出 emoji 純文字格式。
+**目的：** 每日盤中推送至 Discord 的精簡決策摘要。不跑 Phase 1-3 的完整分析，只抓推送所需的 7 個資料點，直接產出 emoji 純文字格式。
 
 ### 執行模型
 Sonnet 4.6（資料抓取為主，無深度合成需要）
 
 ### Step 0
-同標準規範（0a-0e）：讀 `plan.md` + `feedback/*.md` → `get_account_position` → journal 確認。
+同標準規範（0a → 0b → 0e）：讀 `plan.md` + `feedback/*.md` → 讀 `watchlist.md`（標的集合 + 選填持倉）。
 
 ### 資料步驟（依序，可部分並行）
 
 **T1. Earnings Window（next 7 days）**
 **改從 cache 讀：** Step 0.6 已預載 `briefing-out/cache/earnings-dates.json` + `earnings-history.json`，直接 Read 兩份 JSON。
-列出所有持倉 ticker 的：
+列出所有 watchlist 股票 ticker 的：
 - 財報日 + 盤前/盤後（`next_date`, `timing`）
 - 過去 ±48h 已發財報的 ticker 也標出
 - **Trailing 8Q beat rate + avg surprise %**（從 `earnings-history.json`）
@@ -648,7 +659,7 @@ Sonnet 4.6（資料抓取為主，無深度合成需要）
 若 cache `status` ≠ `"ok"` → fallback `mcp__fmp-mcp__getEarningsCalendar`，並加註 `⚠️ earnings cache unavailable`。
 
 **T2. Sentiment Pulse + Fundamentals Cache 預讀（平行 Agent）**
-派出 data-collector subagent，取所有持倉的 EODHD 7d sentiment_trend（格式：TICKER.US）：
+派出 data-collector subagent，取所有 watchlist 標的的 EODHD 7d sentiment_trend（格式：TICKER.US）：
 ```
 Agent(subagent_type="data-collector"):
   呼叫 mcp__eodhd-mcp__get_sentiment_trend 對每個 ticker
@@ -677,7 +688,7 @@ Agent(subagent_type="data-collector"):
 → signal-only：無訊號不推送（比照現有「無 alert 則略過整個 section」慣例）
 
 **T3. News & Catalysts（past 24h）**
-`mcp__yfinance-advanced__get_yahoo_finance_news` 取 top 5 持倉的新聞，各取 1-2 篇 24h 內最重要的。篩選標準：有具體事件（財報、合約、產品發布、監管）優先，無實質 catalyst 跳過。**最多 3 條進入 Telegram 輸出。**
+`mcp__yfinance-advanced__get_yahoo_finance_news` 取 top 5 watchlist 標的的新聞，各取 1-2 篇 24h 內最重要的。篩選標準：有具體事件（財報、合約、產品發布、監管）優先，無實質 catalyst 跳過。**最多 3 條進入 Push 輸出。**
 
 **T4. Sector Rotation**
 `mcp__technical-mcp__get_sector_rotation()` → 取全 sector ETF 相對 SPY 的 leading / improving / weakening / lagging 分類。只顯示各分類各 1-2 個代表 sector。
@@ -709,7 +720,7 @@ Agent(subagent_type="data-collector"):
 
 使用 Write tool 寫入，格式：
 ```markdown
-# Briefing Telegram YYYY-MM-DD
+# Briefing Push YYYY-MM-DD
 
 ## Earnings Window
 ...
@@ -746,9 +757,9 @@ Agent(subagent_type="data-collector"):
 ...
 ```
 
-**T8b. Telegram 純文字 → `briefing-out/YYYY-MM-DD-telegram.txt`**
+**T8b. Discord 推送純文字 → `briefing-out/YYYY-MM-DD-discord.txt`**
 
-使用 Write tool 寫入，格式嚴格遵守（純文字 + emoji，無 markdown，無表格，無 bold/italic/link）：
+使用 Write tool 寫入，格式嚴格遵守（純文字 + emoji，無 markdown 表格；Discord 會渲染 `**bold**`，但為與長文版一致仍以純文字 + emoji 為主）：
 
 ```
 📊 M/D HH:MM（發送時間，本地時區）
@@ -799,7 +810,7 @@ Agent(subagent_type="data-collector"):
 - 無 `**`、`_`、`[text](url)` 等 markdown 語法
 - 數字：K（千）、M（百萬）、% 縮寫
 - 無 catalyst 或無 alert 的 section 完整省略（不要顯示空 section）
-- 目標長度 < 1500 字元（一則 Telegram 訊息），最長不超過 4096
+- 目標長度 < 1500 字元（一則 Discord 訊息）；send_briefing.py 會在 >2000 字時自動分段
 - `briefing-out/` 目錄不存在時先用 Bash `mkdir -p briefing-out` 建立
 
 ---
@@ -811,16 +822,16 @@ Agent(subagent_type="data-collector"):
 ```bash
 # 1. 寫 tier 標記（讓 generate_html.py 知道這次是哪個 tier）
 echo "<tier>" > briefing-out/YYYY-MM-DD-tier.txt
-# <tier> 填入：quick | telegram | full | deep
+# <tier> 填入：quick | push | full | deep
 
 # 2. 生成 HTML + push（tier gate 自動判斷：只有升級才推）
 python3 tools/generate_html.py briefing YYYY-MM-DD --push
 # 成功時印出網頁連結；若網站已有更高 tier 則跳過 push（本地 HTML 仍更新）
 ```
 
-**Tier 升級規則：** `quick(1) < telegram(2) < full(3) < deep(4)`
-- 網站有 telegram + 跑 deep → **push**（升級）
-- 網站有 deep + 跑 telegram → **不 push**（降級，保留深版；本地留一份）
+**Tier 升級規則：** `quick(1) < push(2) < full(3) < deep(4)`
+- 網站有 push + 跑 deep → **push**（升級）
+- 網站有 deep + 跑 push → **不 push**（降級，保留深版；本地留一份）
 - 同級 → push（覆蓋更新）
 
 ### --send 旗標處理
@@ -833,10 +844,10 @@ python3 tools/send_briefing.py YYYY-MM-DD
 
 `send_briefing.py` 會自動：
 1. 呼叫 `tools/generate_html.py briefing YYYY-MM-DD --push`（best-effort，失敗不擋發送）
-2. HTML push 成功 → Telegram 訊息末自動附加「🔗 網頁版：...」連結
-3. 發送 Telegram + Email
+2. HTML push 成功 → Discord 訊息末自動附加「🔗 網頁版：...」連結
+3. 發送至 Discord（webhook；>2000 字自動分段）
 
-成功時輸出「✅ Telegram 已發送 / Email 已寄出」，失敗時輸出錯誤訊息（sender 自帶 retry + error notification）。
+成功時輸出「✅ Discord 已發送」，失敗時輸出錯誤訊息（sender 自帶 retry + dedup）。
 
 ---
 
@@ -934,12 +945,12 @@ raw data 區只能放 fact 數值，**不能放** derived label：
 呼叫 Codex（用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI）：
 
 ```
-我目前的美股持倉（含市值占比）：
-[插入 Step 0b get_account_position 取得的持倉表]
+我目前追蹤的標的（watchlist；有持倉資料者附市值占比）：
+[插入 Step 0b 讀 watchlist.md 取得的標的表]
 
 我的投資風格：
 - 主軸：AI/半導體、高成長科技；汰弱留強，集中持倉
-- 信念持倉（不換）：TSLA, MU, AVGO 多年期 thesis
+- 信念持倉（不換）：見 watchlist「信念持倉」段
 - 板塊偏好：[從 plan.md 摘出 3-5 行板塊目標]
 
 請以獨立分析師視角：
@@ -1037,7 +1048,7 @@ raw data 區只能放 fact 數值，**不能放** derived label：
 - 所有金額為 USD
 - Quick 版應在一個畫面內完成
 - Full/Deep 版可較長但需結構清晰
-- **Telegram Tier**：對話輸出一份簡要摘要（確認執行完畢）；真正的輸出在 `briefing-out/` 的兩個檔案
+- **Push Tier**：對話輸出一份簡要摘要（確認執行完畢）；真正的輸出在 `briefing-out/` 的兩個檔案
 
 ## briefing-out/ 目錄
 - `briefing-out/` 已加入 `.gitignore`（個人化數據，不 commit）

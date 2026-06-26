@@ -72,11 +72,16 @@ uv run --directory "$SCRIPT_DIR" python3 "$SCRIPT_DIR/fetch_news.py" \
   >> "$LOG_DIR/launchd.log" 2>> "$LOG_DIR/launchd.err" \
   || log "news refresh failed (non-fatal, briefing continues without news cache)"
 
+log "Refreshing crypto cache (CoinGecko)..."
+uv run --directory "$SCRIPT_DIR" python3 "$SCRIPT_DIR/fetch_crypto.py" \
+  >> "$LOG_DIR/launchd.log" 2>> "$LOG_DIR/launchd.err" \
+  || log "crypto refresh failed (non-fatal, briefing continues without crypto cache)"
+
 # ── Invoke Claude CLI ──────────────────────────────────────────────────────
 # Must cd to REPO_ROOT so Claude Code finds .claude/skills/ and project settings
 cd "$REPO_ROOT"
 
-PROMPT="/briefing telegram --send $CODEX_FLAG"
+PROMPT="/briefing push --send $CODEX_FLAG"
 log "Running: claude -p \"$PROMPT\" (cwd: $REPO_ROOT)"
 
 
@@ -113,7 +118,7 @@ while [[ $attempt -lt $RETRY_MAX ]]; do
 done
 
 if [[ "$success" != "true" ]]; then
-  # 失敗只記 log，不推 Telegram 錯誤訊息（用戶偏好：Telegram 只收正式 briefing）
-  log "All $RETRY_MAX attempts failed — see briefing-out/launchd.err (no Telegram error notify by design)"
+  # 失敗只記 log，不推 Discord 錯誤訊息（用戶偏好：Discord 只收正式 briefing）
+  log "All $RETRY_MAX attempts failed — see briefing-out/launchd.err (no Discord error notify by design)"
   exit 1
 fi

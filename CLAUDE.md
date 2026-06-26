@@ -1,7 +1,7 @@
 # Fundamental Allocation Study - Project Instructions
 
 ## Project Overview
-This is an investment research and portfolio management workspace. The user actively trades US stocks and options on a Level 2 options margin brokerage account (connected via the `firstrade-server` MCP as the reference broker integration).
+This is an investment research workspace for US stocks, options, and cryptocurrency. It is **watchlist-driven**: the user maintains a manual `watchlist.md` (tickers + optional holdings) which is the source of truth for every skill — there is no broker integration. The user researches equities/options and crypto, and reasons about ideas through a first-principles + expected-value lens.
 
 ## Language & Format
 - **All output in Traditional Chinese (繁體中文)**
@@ -10,24 +10,25 @@ This is an investment research and portfolio management workspace. The user acti
 
 ## Workflow
 1. `/briefing` — quick daily check (~1 min); `/briefing full` (~3 min); `/briefing deep` (~5 min)
-   - `/briefing telegram` — Telegram push tier (~2-3 min)：盤中推送專用，產出 briefing-out/ 兩個檔案
-   - `--send` 旗標（任何 tier 可加）：執行完後推送 Telegram + email 副本
-   - 例：`/briefing telegram --send`、`/briefing full --send`
-   - launchd 每個交易日 CEST 17:00 自動執行 `/briefing telegram --send`（週五加 `--codex`）
+   - `/briefing push` — Discord push tier (~2-3 min)：盤中推送專用，產出 briefing-out/ 兩個檔案
+   - `--send` 旗標（任何 tier 可加）：執行完後推送 Discord（webhook）
+   - 例：`/briefing push --send`、`/briefing full --send`
+   - launchd 每個交易日 CEST 17:00 自動執行 `/briefing push --send`（週五加 `--codex`）
    - Setup 文件：`docs/briefing-auto-send.md`
-2. `/portfolio-review` — full deep report with live data via MCP
-3. `/stock-analysis TICKER` — individual stock deep dive
+2. `/stock-analysis TICKER` — individual stock deep dive（`/stock-analysis TICKER1 TICKER2` 比較）
+3. `/crypto-analysis SYMBOL` — cryptocurrency deep dive（tokenomics / 供給 / 鏈上 / 主導率）
 4. `/options-strategy TICKER STRATEGY` — options calculation (supports multi-ticker comparison)
-5. `/trade-journal log|review|summary|auto` — trade records
-6. `/mcp-health` — test all MCP server connections
+5. `/ev-check [horizon]` — watchlist 的機率分布 + EV 檢查
+6. `/todo` — 下一個交易日的優先行動清單
+7. `/mcp-health` — test all MCP server connections
 
 ### Codex 第二意見（opt-in `--codex` / `--2nd`）
 
-Add `--codex` to any of the above (except `/mcp-health`, `/trade-journal`) to append a Codex second-opinion section:
+Add `--codex` to any of the above (except `/mcp-health`) to append a Codex second-opinion section:
 
-- **B1. 獨立第一性分析（預設）** — Codex 在**不知道 Claude 結論**的情況下，獨立執行 Step 0e（thesis / 證偽條件 / 機率分布 / EV / Verdict），只給它 raw data。然後 Claude 與 Codex 兩個獨立輸出**並排比較**，找出真實共識 vs 真實分歧。所有 5 個 skill 適用。
-- **B2. 機會掃描** (`/codex:rescue`) — surface hot themes/tickers not in current portfolio. `/briefing full/deep`, `/portfolio-review`, `/todo` only.
-- **B3. 輪動分析** (`/codex:rescue`) — sector + stock rotation (leading/lagging vs SPY, money flow, 3 actionable rotation moves). Same 3 skills.
+- **B1. 獨立第一性分析（預設）** — Codex 在**不知道 Claude 結論**的情況下，獨立執行 Step 0e（thesis / 證偽條件 / 機率分布 / EV / Verdict），只給它 raw data。然後 Claude 與 Codex 兩個獨立輸出**並排比較**，找出真實共識 vs 真實分歧。所有分析型 skill 適用。
+- **B2. 機會掃描** (`/codex:rescue`) — surface hot themes/tickers not on the current watchlist. `/briefing full/deep`, `/todo` only.
+- **B3. 輪動分析** (`/codex:rescue`) — sector + stock rotation (leading/lagging vs SPY, money flow, 3 actionable rotation moves). Same skills.
 
 #### 為什麼預設用「獨立第一性」而不是「對立面審查」
 
@@ -56,15 +57,15 @@ codex exec --color never --skip-git-repo-check --sandbox read-only \
 1. **Prompt 第一行強制加**：`ANSWER DIRECTLY FROM THE DATA BELOW. Do NOT read files, do NOT invoke skills, do NOT run shell commands, do NOT use any tools. Output the analysis immediately.`（雙保險，即使 superpowers 漏關也不讀檔）
 2. **B1/B2/B3 並行**：各寫一個 prompt 檔，用 `run_in_background` 同時跑，輪詢 `grep -c "tokens used"` 判完成
 3. **抽取回覆**：`awk '/^codex$/{f=1} f' <OUT_FILE> | sed '/tokens used/q'`（去掉 echo 回來的 prompt + startup banner）
-4. **中性化**：B1 prompt 只給 raw 持倉 + fact 數據，不含 Claude 結論（per `feedback/codex-prompt-neutrality.md`）
+4. **中性化**：B1 prompt 只給 raw watchlist + fact 數據，不含 Claude 結論（per `feedback/codex-prompt-neutrality.md`）
 5. **失敗 → 跳過**：輸出 `⚠️ Codex 不可用：[error]，跳過第二意見` 後照常輸出主分析
 6. `hook: SessionStart Failed` 是 peon-ping 音效 hook 在非互動下的無害噪音，忽略
 7. **B1 機率分布反偷懶（必嵌 prompt）**：Codex 走一次性 prompt 無我們的 `probability-honesty-checker` agent，會落回 default mirror（25/50/25）。故 B1 prompt 的機率分布段**必須內嵌 5 步強制流程 + 禁用 default mirror shape**（見各 skill B1 模板的「嚴禁偷懶」段，源自 `feedback/probability-distribution-honesty.md`）。比較 Claude vs Codex EV 前先確認 Codex 機率非 default，否則分歧是「Codex 偷懶」而非真實見解衝突。
 
 ## Key Files
+- `watchlist.md` — **所有 skills 的真實來源**：追蹤的標的（股票/加密）+ 選填持倉（股數/成本）。手動維護；gitignored（範本 `watchlist.example.md`）
 - `plan.md` — 投資計畫（板塊目標、策略佇列、觀察清單、策略原則）— 只在用戶要求時更新
-- `journal/` — 每日交易日誌（YYYY-MM-DD.md），含完整倉位快照
-- `feedback/` — 交易風格偏好，所有 skills 每次必讀
+- `feedback/` — 研究/風格偏好，所有 skills 每次必讀
 - `research/` — 投資論文與研究筆記
 
 ## HTML 報告站工作流
@@ -74,13 +75,13 @@ codex exec --color never --skip-git-repo-check --sandbox read-only \
 ### 工具
 ```bash
 python3 tools/generate_html.py briefing 2026-06-10 [--push]
-python3 tools/generate_html.py portfolio-review briefing-out/portfolio-review-2026-06-07.md [--push]
 python3 tools/generate_html.py stock-analysis briefing-out/stock-analysis-NVDA-2026-06-10.md [--push]
+python3 tools/generate_html.py crypto-analysis briefing-out/crypto-analysis-BTC-2026-06-10.md [--push]
 python3 tools/generate_html.py options-strategy briefing-out/options-strategy-NVDA-2026-06-10.md [--push]
 ```
 - 無 `--push`：只在 `briefing-out/html/` 存一份本地 HTML
 - 有 `--push`：同步到 `$REPORTS_REPO_PATH` 並 git push（Netlify 自動部署）
-- `send_briefing.py` 在 `--send` 流程中自動呼叫 `generate_html briefing --push`，Telegram 訊息末自動附連結
+- `send_briefing.py` 在 `--send` 流程中自動呼叫 `generate_html briefing --push`，Discord 訊息末自動附連結
 
 ### 環境變數（.env，絕不 commit 到主 repo）
 ```
@@ -99,20 +100,20 @@ REPORTS_REPO_PATH=/path/to/fadacai-reports  # private repo local clone
 
 ### 0a. 每次必做
 - 讀取 `plan.md` — 了解策略佇列與板塊目標
-- 讀取 `feedback/*.md` — 套用交易風格偏好
+- 讀取 `feedback/*.md` — 套用研究/風格偏好
 
-### 0b. 取得即時持倉
-- 呼叫 `mcp__firstrade-server__get_account_position`
+### 0b. 載入 watchlist（取代即時持倉）
+- 讀取 `watchlist.md` — 這是**所有 skills 的真實來源**。沒有 broker、沒有即時持倉抓取。
+- watchlist 含兩類條目：
+  - **追蹤標的**（純研究，無持倉）— 只有 ticker/symbol + 選填 thesis 標籤
+  - **持倉標的**（選填）— 額外帶 `shares` / `avg_cost`（及加密的 `qty`）。用戶手動維護。
+- **持倉欄位是選填的。** 凡需要組合權重 / 集中度 / 損益% 的分析：
+  - 若 watchlist 有 `shares`/`avg_cost` → 用它們算 market value、% 權重、未實現損益
+  - 若沒有 → **跳過**權重/集中度/損益段，只做標的層級的研究（估值、技術、catalyst），並標記「（無持倉資料，略過組合層級分析）」
+- 不存在 `watchlist.md` → 提示用戶用 `watchlist.example.md` 建立，並（若用戶有給 ticker）以該批 ticker 當臨時 watchlist 繼續。
 
-### 0c. 今日 journal 確認
-- 若 `journal/YYYY-MM-DD.md`（今日）已存在 → 跳過偵測
-- 若不存在 → 執行 gap-fill + 變動偵測（見下方）
-
-### 0d. Gap-fill 邏輯
-- 讀取 `journal/` 最新檔案作為「前」
-- 若距上次 journal > 3 個交易日：先建立銜接條目（標記 `⚠️ gap-fill`，列出時間範圍）
-- 比較「前」vs 即時持倉，輸出差異（🆕新建倉/🔴清倉/📈加碼/📉減碼）
-- 自動建立今日 journal，含完整倉位快照
+### 0c.（已移除）持倉變動偵測 / journal
+- 本工作區無 broker，不做倉位變動偵測，也不維護 `journal/`。watchlist 即唯一狀態。
 
 ### 0e. 第一性原理紀律（Verdict / Recommendation / Action 前必做）
 
@@ -140,7 +141,7 @@ REPORTS_REPO_PATH=/path/to/fadacai-reports  # private repo local clone
 - narrative 層的辯論（「該買 vs 該避」）永遠分歧，第一性是繞開兩者的 ground truth
 - 連續做不到這三題 = Verdict 是 narrative + heuristic + framing 的產物，不可靠
 
-**⚠️ 機率分布強制流程（briefing / portfolio-review / stock-analysis / todo 適用）：**
+**⚠️ 機率分布強制流程（briefing / stock-analysis / crypto-analysis / todo / ev-check 適用）：**
 
 凡輸出機率分布或 EV，必須先呼叫：
 
@@ -207,8 +208,8 @@ Agent(
 - 工具：`tools/thesis_ledger.py`（去重、碰撞攔截、到期/過期掃描、狀態轉換、統計全在程式層，**Claude 不手改 JSON**）
 - 去重 key = `ticker:slug`；同 key 但 thesis 差太多 → exit code 2 碰撞，改 slug 或 `supersede`
 - 逾期 >30 天未驗收 → 自動 `expired`（當作無結果，不算命中率分母）
-- **驗收（每次 briefing / portfolio-review 自動跑）**：`thesis_ledger.py due` → 對到期項抓數判定 → `resolve`；抓不到新數 → `reschedule` 不猜 verdict
-- **登錄（briefing / portfolio-review 收尾）**：`list` 看既有 slug → `add`
+- **驗收（每次 briefing 自動跑）**：`thesis_ledger.py due` → 對到期項抓數判定 → `resolve`；抓不到新數 → `reschedule` 不猜 verdict
+- **登錄（briefing 收尾）**：`list` 看既有 slug → `add`
 - **Signal-inference 來源**：從 news body / SEC 8-K / 逐字稿抽**已量化陳述**推導的 thesis，登錄時加 `--source signal-inference --ev "signal: <metric> <value>, <source>, conf=<confidence>"`。僅 `confidence ∈ {high, medium}` 且有明確前瞻 trigger + 強制 `raw_quote`（≤120 字逐字）才登錄；`low` 只在文字呈現。`stats --source signal-inference` 可量測新聞推導命中率（閉環驗證 P3 價值）。反幻覺鎖：無 raw_quote = 無 signal = 不登錄。
 - **Resolve 附加估值影響欄位（選填，有數就帶）：**
   ```
@@ -220,24 +221,15 @@ Agent(
   passed→公允價上修（recompute D1 三錨點）；failed→下修；partial→拆分 thesis 成分 vs 倍數成分（impact_decomp）。數字存入 history[]，long-term queryable via stats。
 - 詳見 `docs/thesis-ledger.md`
 
-## Auto Journal Detection（SessionStart Hook）
-每次對話開始時，hook 會輸出今日 journal 狀態：
-- `⚡ 今日尚無 journal，自動執行倉位偵測` → 執行 Step 0c/0d，建立 journal，完成後以 1 行通知用戶，繼續處理原始請求
-- `✅ 今日 journal 已存在` → 略過偵測
-
 ## Investment Style
 - 主軸：AI/半導體、高成長科技（無板塊上限，單一個股 > 10% 才提醒）
+- 加密：BTC/ETH 為核心，選擇性高信念 alt（thesis 必須可驗證，非 narrative）
 - 避險：基建、航太、貴金屬、核能（小比例平衡）
 - Strategies: LEAPS (stock replacement, deep ITM delta 0.72-0.85), Bull Put Spread, Bull Call Spread, Covered Calls, PMCC
-- Risk: 單一持倉 > 10% flagged as over-concentrated
+- Risk: 單一持倉 > 10% flagged as over-concentrated（僅在 watchlist 有持倉資料時計算）
 
 ## MCP Tools Available
-- `mcp__firstrade-server__*` — live Firstrade account data (positions, balance, history, quotes, watchlists)
-  - `get_account_position` — real-time stock + options positions (replaces current-position.md)
-  - `get_account_balance` — account equity and cash
-  - `get_account_history` — transaction history
-  - `get_single_quote` / `get_watchlist_quote` — real-time quotes
-- `mcp__yfinance-advanced__*` — real-time quotes, options chains, financials, news, recommendations (primary)
+- `mcp__yfinance-advanced__*` — real-time quotes, options chains, financials, news, recommendations (primary). Also quotes crypto via `BTC-USD` / `ETH-USD` style tickers.
 - `mcp__sec-edgar-mcp__*` — SEC filings, XBRL financials, insider trading (Form 4), 8-K events, segment data
 - `mcp__fmp-mcp__*` — stock peers, market movers, company profiles (free tier; most endpoints need paid plan)
 - `mcp__technical-mcp__*` — technical indicators (RSI, MACD, Bollinger Bands, ATR, momentum score, support/resistance)
@@ -255,18 +247,19 @@ Agent(
   - `get_earnings_history(ticker, quarters)` — trailing 8Q EPS beat base-rate: `{beat_pct, avg_surprise_pct, beats, quarters_counted}` + next_earnings. **Primary source for probability-honesty-checker Step 1d.** Caveat: avg_surprise_pct unreliable for low-EPS-base stocks (AMD shows +152% artifact — use beat COUNT, not avg%); cross-check vs local earnings-history.json cache
   - `get_economic_calendar(from_date, to_date, country, high_impact_only, limit)` — CPI/NFP/FOMC/PCE with forecast vs previous vs actual. `high_impact_only=True` for macro catalysts. country="US" (2-letter); feeds probability-honesty-checker Step 1i forward catalyst dates
   - `get_macro_indicator(country, indicator, limit)` — annual macro time series (inflation_consumer_prices_annual, real_interest_rate, gdp_growth_annual…). country="USA" (3-letter). **Annual/lagged — regime context only, not high-frequency signals**
+- `mcp__coingecko__*` — **(optional)** cryptocurrency data for `/crypto-analysis`: price/market-cap/volume, circulating vs max supply (tokenomics), BTC/ETH dominance, market-cap rankings, historical OHLC. Public demo endpoints work without a key. If not configured → mark "⚠️ coingecko 未配置" and fall back to yfinance (`BTC-USD`) + WebSearch.
 - Use parallel agent dispatch for batch data fetching across multiple tickers
 
 ## MCP Retry & Fallback Policy
 - Any MCP tool call that fails → retry up to **3 times**
 - 3 次都失敗 → call that server's health test (single simple tool) to diagnose:
-  - firstrade-server: `get_account_balance()`
   - yfinance-advanced: `get_stock_info("AAPL")`
   - sec-edgar-mcp: `get_company_info("AAPL")`
   - fmp-mcp: `getCompanyProfile("AAPL")`
   - technical-mcp: `get_technical_indicators("AAPL")`
   - eodhd-mcp: `get_sentiment_trend("AAPL.US", 7)`
   - polymarket-mcp: `get_trending_markets()`
+  - coingecko (optional): `get_simple_price("bitcoin")`
 - Health test also fails → fallback to WebSearch/WebFetch for equivalent data
 - 在輸出中標記 "⚠️ [server] MCP 不可用，使用替代數據源"
 
@@ -291,16 +284,14 @@ Data-collector 每次啟動是全新 context（無歷史），Haiku 完全勝任
 | Skill / 任務 | 模型 | 理由 |
 |---|---|---|
 | `/ev-check` | **Opus 4.8** | 純第一性機率分布 + EV，反偷懶紀律最吃推理 |
-| `/portfolio-review` | **Opus 4.8** | 跨全組合綜合 + 風險 + EV，驅動資金決策 |
 | `/briefing deep` | **Opus 4.8** | 深度合成 + Codex 整合 + 機率/EV |
 | `/stock-analysis` | **Opus 4.8** | 單標的深掘，旗艦推理 |
+| `/crypto-analysis` | **Opus 4.8** | 加密第一性（tokenomics/供給/鏈上）+ EV |
 | `/options-strategy` | **Opus 4.8** | Greeks / 價差計算 + 多腿比較 |
 | `/briefing full` | **Opus 4.8** | 中等綜合 + Verdict |
 | `/briefing`（quick）| **Sonnet 4.6** | ~1min 彙整 |
-| `/briefing telegram` | **Sonnet 4.6** | 每日 launchd 自動推送，成本敏感 |
+| `/briefing push` | **Sonnet 4.6** | 每日 launchd 自動推送，成本敏感 |
 | `/todo` | **Sonnet 4.6** | 行動清單 |
-| `/trade-journal` review/summary | **Sonnet 4.6** | 帶輕度分析 |
-| `/trade-journal` log | **Haiku 4.5** | 純記錄/格式化（frontmatter 預設 Sonnet，log 可降 Haiku）|
 | `/mcp-health` | **Haiku 4.5** | 純連線測試 |
 | data-collector subagent | **Haiku 4.5** | 純 MCP 抓資料 |
 | probability-honesty-checker subagent | **Opus 4.8** | 機率紀律執法者，用旗艦 |

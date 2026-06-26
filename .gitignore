@@ -1,6 +1,6 @@
-# Private portfolio data
+# Private research data (watchlist.example.md is the committed template)
 plan.md
-/journal/
+watchlist.md
 /feedback/
 /research/
 /reports/
@@ -14,9 +14,6 @@ tools/__pycache__/
 # MCP config (contains API tokens / credentials — use .mcp.json.example as template)
 .mcp.json
 .codex/config.toml
-
-# Runtime / auto-generated snapshots (contain real account data)
-current-position.md
 
 # Internal Claude Code state
 .claude/scheduled_tasks.lock

@@ -24,7 +24,7 @@ model: claude-haiku-4-5-20251001
 
 ## 可用工具
 
-所有 MCP 工具（firstrade-server / yfinance-advanced / sec-edgar-mcp / fmp-mcp / technical-mcp / eodhd-mcp / polymarket-mcp）、WebFetch、WebSearch、Read、Grep、Glob、Bash。
+所有 MCP 工具（yfinance-advanced / sec-edgar-mcp / fmp-mcp / technical-mcp / eodhd-mcp / polymarket-mcp / coingecko）、WebFetch、WebSearch、Read、Grep、Glob、Bash。
 
 ## 回傳格式範例
 

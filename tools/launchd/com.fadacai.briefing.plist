@@ -12,7 +12,7 @@
   </array>
 
   <!-- Single daily trigger at 17:00 system-local time. One attempt per day —
-       no backup windows; if the run fails it only logs (no Telegram error
+       no backup windows; if the run fails it only logs (no Discord error
        notify). Pair with `pmset repeat wakepoweron … 16:59 weekdays` and the
        com.fadacai.caffeinate agent so the Mac is awake for the window. -->
   <key>StartCalendarInterval</key>

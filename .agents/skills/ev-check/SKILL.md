@@ -1,15 +1,15 @@
 ---
 name: ev-check
-description: 強制 first-principles 機率分布 + EV 計算。用於檢查當前組合在指定時間窗的預期報酬，禁止用 default bell shape 或質性語言。Usage - /ev-check [30d|7d|14d] [optional scenario theme]
+description: 強制 first-principles 機率分布 + EV 計算。用於檢查 watchlist（含選填持倉）在指定時間窗的預期報酬，禁止用 default bell shape 或質性語言。Usage - /ev-check [30d|7d|14d] [optional scenario theme]
 user_invocable: true
-model: claude-fable-5
+model: claude-opus-4-8
 ---
 
 # EV / Probability Distribution Honesty Check
 
-對當前持倉執行嚴謹的機率分布與 expected value 計算。**強制 first-principles**，不接受偷懶輸出。
+對 watchlist（含選填持倉）執行嚴謹的機率分布與 expected value 計算。**強制 first-principles**，不接受偷懶輸出。若 watchlist 無持倉資料，則以「等權」或用戶指定的標的集合做 EV，並標記「無持倉權重，採等權」。
 
-此 skill 可獨立呼叫做 ad-hoc check，或被其他 skill（briefing / portfolio-review / stock-analysis / todo）在輸出 Verdict / 機率分布前 mandatory 呼叫。
+此 skill 可獨立呼叫做 ad-hoc check，或被其他 skill（briefing / stock-analysis / crypto-analysis / todo）在輸出 Verdict / 機率分布前 mandatory 呼叫。
 
 ## Arguments
 
@@ -21,15 +21,15 @@ model: claude-fable-5
 
 ### Step 1: 收集 raw 輸入
 
-呼叫以下 MCP 取數據（可平行）：
+先讀 `watchlist.md`（CLAUDE.md Step 0b）取得標的集合與選填持倉，再呼叫以下 MCP 取數據（可平行）：
 
-1. `mcp__firstrade-server__get_account_position` — 持倉
-2. `mcp__firstrade-server__get_account_balance` — 帳戶總值 + 現金
-3. `mcp__technical-mcp__get_batch_indicators(所有持倉, period=3mo)` — RSI / momentum / trend
-4. `mcp__technical-mcp__get_sector_rotation(period=3mo)` — leading / lagging
-5. `mcp__yfinance-advanced__get_stock_info(top 11 by MV)` — 52w high/low、fundamentals
-6. `mcp__fmp-mcp__getEarningsCalendar(today, today+horizon)` — binary catalysts in window
-7. （平行 agent）`mcp__eodhd-mcp__get_sentiment_trend(top 8 by MV, days=30)` — 7d/30d sentiment
+1. 讀 `watchlist.md` — 標的集合 + 選填持倉（股數/成本/加密 qty）。有持倉 → 算 MV 權重；無 → 等權。
+2. `mcp__technical-mcp__get_batch_indicators(所有 watchlist 標的, period=3mo)` — RSI / momentum / trend
+3. `mcp__technical-mcp__get_sector_rotation(period=3mo)` — leading / lagging
+4. `mcp__yfinance-advanced__get_stock_info(top 11 by 權重/等權)` — 52w high/low、fundamentals
+5. `mcp__fmp-mcp__getEarningsCalendar(today, today+horizon)` — binary catalysts in window
+6. （平行 agent）`mcp__eodhd-mcp__get_sentiment_trend(top 8, days=30)` — 7d/30d sentiment
+7. 加密標的：用 `mcp__coingecko__*`（或 fallback yfinance `BTC-USD`）取價格/市值/主導率，catalyst 用 polymarket
 
 ### Step 2: 整理成 8 項 Input Enumeration
 
@@ -109,8 +109,8 @@ EV ([horizon]) = X.XX%
 以下 skill 在輸出 **Verdict / 機率分布 / EV / Quick Take** 之前 **必須** 呼叫此 skill（或直接 invoke probability-honesty-checker agent）：
 
 - `/briefing`（任何 tier）→ Quick Take 前
-- `/portfolio-review` → Section K 第一性檢查前
 - `/stock-analysis` → 個股 Verdict 前
+- `/crypto-analysis` → 加密 Verdict 前
 - `/todo` → 行動清單第一性檢查前
 
 呼叫方式可選：
@@ -123,7 +123,7 @@ EV ([horizon]) = X.XX%
 
 ## 失敗模式與防呆
 
-| Codex 主程序常見偷懶 | 此 skill 阻擋方式 |
+| Claude 主程序常見偷懶 | 此 skill 阻擋方式 |
 |---------------------|----------------|
 | 套 30/45/25 default | Agent Step 2 強制顯示「形狀規則應用」對照表，不對照不能進 Step 3 |
 | 寫「略偏負」結論 | Agent Step 5 強制顯式 Σ 計算，數字必須出現 |

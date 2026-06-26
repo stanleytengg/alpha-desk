@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to .mcp.json and fill in your own paths + API tokens. .mcp.json is gitignored (contains secrets). All 7 MCP servers below; omit any you don't use.",
+  "_comment": "Copy to .mcp.json and fill in your own paths + API tokens. .mcp.json is gitignored (contains secrets). Omit any server you don't use. coingecko is optional (crypto research); basic endpoints work without a key.",
   "mcpServers": {
     "technical": {
       "type": "stdio",
@@ -36,10 +36,14 @@
       "type": "http",
       "url": "http://localhost:8081/mcp"
     },
-    "firstrade-server": {
+    "coingecko": {
+      "_comment": "Optional — crypto research via the official CoinGecko MCP (npm, run with npx; requires Node). Public/demo endpoints need no key; set COINGECKO_DEMO_API_KEY for higher rate limits (Demo plan is free). NOTE: tools/fetch_crypto.py already pulls CoinGecko REST without any MCP, so this server is fully optional.",
       "type": "stdio",
-      "command": "uv",
-      "args": ["--directory", "/abs/path/to/firstrade-server", "run", "server.py"]
+      "command": "npx",
+      "args": ["-y", "@coingecko/coingecko-mcp"],
+      "env": {
+        "COINGECKO_ENVIRONMENT": "demo"
+      }
     }
   }
 }

@@ -9,13 +9,12 @@ model: claude-opus-4-8
 
 Evaluate options strategies for a given ticker with risk/reward analysis.
 
-## Step 0: 配置同步 & 倉位偵測
+## Step 0: 配置同步 & watchlist
 
-執行 AGENTS.md 的 Step 0 統一規範（0a → 0b → 0c → 0d → **0e**）。
+執行 CLAUDE.md 的 Step 0 統一規範（0a → 0b → **0e**）。
 - 讀 `plan.md` + `feedback/*.md`（必做）；了解此標的在計畫中的進場策略與 strikes
-- 呼叫 `get_account_position` 取即時持倉（確認現有部位與資金狀況）
-- 今日 journal 不存在 → 執行 gap-fill + 變動偵測 + 自動建立 journal
-- **0e 第一性原理紀律**：在 Recommendation 之前必須完成「方向 thesis / 證偽條件 / IV 機率分布」三題（見 AGENTS.md 0e）
+- 讀 `watchlist.md`（CLAUDE.md Step 0b）— 確認是否已持有此標的（covered call / PMCC 等需現股）。watchlist 有 `shares` → 視為持有；無 → 視為新倉並標記「未持有現股」
+- **0e 第一性原理紀律**：在 Recommendation 之前必須完成「方向 thesis / 證偽條件 / IV 機率分布」三題（見 CLAUDE.md 0e）
 
 ---
 
@@ -172,9 +171,9 @@ For stocks that are overbought or above target price:
 
 ### B1. 獨立第一性分析（預設，independent first-principles）
 
-**核心原則：Codex 不看 Codex 的 strike 選擇與 Recommendation**，只給 raw market data，讓它獨立挑 strike + 計 E_adj。Codex 與 Codex 兩個獨立輸出並排比較。
+**核心原則：Codex 不看 Claude 的 strike 選擇與 Recommendation**，只給 raw market data，讓它獨立挑 strike + 計 E_adj。Claude 與 Codex 兩個獨立輸出並排比較。
 
-呼叫 Codex（`subagent_type: "codex:codex-rescue"`），prompt 模板：
+呼叫 Codex（**用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI；勿用 codex:codex-rescue subagent / `/codex:rescue`，會卡 superpowers preamble**），prompt 首行加強制 no-tool 指令，模板：
 
 ```
 我是一名美股投資人，使用 Level 2 options + Spread 的 margin 帳戶。
@@ -186,11 +185,11 @@ For stocks that are overbought or above target price:
 - 分析師中位 PT：$XXX
 - 技術面：RSI / 趨勢 / 距 52W 高 / R1 / S1 / SMA50
 - 近期催化：[財報日、產業事件]
-- 配置上下文：用戶帳戶 ~$XXX，Quarter-Kelly 單筆上限 5%（~$XX,XXX）
-- 用戶持倉：[已持有 X 股 / 未持有]
+- 配置上下文：Quarter-Kelly 單筆上限 5%（若 watchlist/plan 有帳戶規模則換算金額，否則以 % 表示）
+- 用戶持倉（來自 watchlist）：[已持有 X 股 / 未持有]
 
 **可選 strike 範圍：**
-[列出該策略下合理的 3-5 個 strike + DTE 組合，不標註哪個是 Codex 選]
+[列出該策略下合理的 3-5 個 strike + DTE 組合，不標註哪個是 Claude 選]
 - Strike $X DTE Y → 權利金 $X / 損益比 X.X / breakeven $X
 - Strike $X DTE Y → ...
 
@@ -212,8 +211,8 @@ For stocks that are overbought or above target price:
 
 **規則：**
 - E_adj = 損益比 / ATR%（越高越優先）
-- 必須講口數（AGENTS.md feedback 規定）
-- 不假設 Codex 選哪個 strike
+- 必須講口數（CLAUDE.md feedback 規定）
+- 不假設 Claude 選哪個 strike
 - 用客觀數據與你自己的 mental model
 
 請以繁體中文回覆，控制在 600 字內。
@@ -239,9 +238,9 @@ For stocks that are overbought or above target price:
 
 ---
 
-### 並排比較：Codex vs Codex（獨立輸出）
+### 並排比較：Claude vs Codex（獨立輸出）
 
-| 維度 | Codex | Codex | 一致性 |
+| 維度 | Claude | Codex | 一致性 |
 |------|--------|-------|--------|
 | 推薦 strike | $X DTE Y | $X DTE Y | 同 / 異 |
 | 口數 | N | N | — |
@@ -264,3 +263,12 @@ For stocks that are overbought or above target price:
 
 ## Output Language
 Use Traditional Chinese (繁體中文) for all text output.
+
+## 存檔 + HTML 生成
+報告完成後：
+1. 使用 Write tool 把完整 markdown 寫到 `briefing-out/options-strategy-<TICKER>-YYYY-MM-DD.md`
+2. 執行：
+```bash
+python3 tools/generate_html.py options-strategy briefing-out/options-strategy-<TICKER>-YYYY-MM-DD.md --push
+```
+成功時印出網頁連結，失敗時印警告並繼續。

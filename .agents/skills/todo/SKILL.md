@@ -7,23 +7,20 @@ model: claude-sonnet-4-6
 
 # Portfolio Action Todo
 
-根據當前持倉、投資計畫、選擇權狀態，生成有優先順序的行動清單。
+根據 watchlist（含選填持倉）、投資計畫、選擇權狀態，生成有優先順序的行動清單。
 
 ## 資料讀取順序
 
-### Step 0：AGENTS.md 統一規範（含 0e 第一性原理紀律）
-執行 0a → 0b → 0c → 0d → **0e**。每個 🔴/🟡/🟢 行動項目都必須通過第一性檢查（thesis / 證偽條件 / 機率），否則該項應移到「⏸ 不動」並註明缺乏明確 thesis。
+### Step 0：CLAUDE.md 統一規範（含 0e 第一性原理紀律）
+執行 0a → 0b → **0e**。每個 🔴/🟡/🟢 行動項目都必須通過第一性檢查（thesis / 證偽條件 / 機率），否則該項應移到「⏸ 不動」並註明缺乏明確 thesis。
 
-### Step 1：取得即時持倉（必做）
+### Step 1：載入 watchlist（必做）
 同時執行：
-- `mcp__firstrade-server__get_account_position` — 即時持倉（股票 + 選擇權）
+- 讀取 `watchlist.md`（CLAUDE.md Step 0b）— 追蹤標的 + 選填持倉（股數/成本/加密 qty）
 - 讀取 `plan.md` — 計畫中待辦事項
+- 選擇權急迫性段落只在 watchlist 有記錄選擇權部位時適用；無則略過
 
-### Step 2：讀取 journal（快速掃描）
-- 找今天的 `journal/YYYY-MM-DD.md`
-- 若存在，掃描「已執行」事項，避免重複建議
-
-### Step 3：技術面補充（選擇性，快速版跳過）
+### Step 2：技術面補充（選擇性，快速版跳過）
 僅對「需要確認進場時機」的標的，呼叫：
 - `mcp__technical-mcp__get_batch_indicators` — 快速取 RSI/動能
 - 目的是確認「現在進場還是等」
@@ -112,9 +109,9 @@ model: claude-sonnet-4-6
 
 ### B1. 獨立第一性分析（預設，independent first-principles）
 
-**核心原則：Codex 不看 Codex 的行動清單**（不給 🔴/🟡/🟢 分級與排序），只給 raw 持倉 + 計畫 ⏳ 項目 + 市場數據，讓它獨立排今日 priorities。Codex 與 Codex 兩個獨立輸出並排比較。
+**核心原則：Codex 不看 Claude 的行動清單**（不給 🔴/🟡/🟢 分級與排序），只給 raw 持倉 + 計畫 ⏳ 項目 + 市場數據，讓它獨立排今日 priorities。Claude 與 Codex 兩個獨立輸出並排比較。
 
-呼叫 Codex（`subagent_type: "codex:codex-rescue"`），prompt 模板：
+呼叫 Codex（**用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI；勿用 codex:codex-rescue subagent / `/codex:rescue`，會卡 superpowers preamble**），prompt 首行加強制 no-tool 指令，模板：
 
 ```
 我是一名美股投資人，使用 Level 2 options + Spread 的 margin 帳戶。
@@ -147,7 +144,7 @@ model: claude-sonnet-4-6
 **規則：**
 - 必須講股數/口數
 - 觸發條件必須 falsifiable
-- 不假設 Codex 已說過什麼
+- 不假設 Claude 已說過什麼
 
 請以繁體中文回覆，控制在 700 字內。
 
@@ -156,11 +153,11 @@ model: claude-sonnet-4-6
 
 ### B2. 機會掃描（opportunity scout）
 
-呼叫 `/codex:rescue`：
+呼叫 Codex（用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI）：
 
 ```
-我目前的美股持倉（含市值占比）：
-[插入持倉表，由 Step 1 的 get_account_position 取得]
+我目前追蹤的標的（watchlist；有持倉資料者附市值占比）：
+[插入 watchlist 表，由 Step 1 讀 watchlist.md 取得]
 
 我的投資風格：
 - 主軸：AI/半導體、高成長科技；汰弱留強，集中持倉
@@ -178,15 +175,15 @@ model: claude-sonnet-4-6
 
 ### B3. 輪動分析（rotation scan）
 
-**Step 1 — Codex 預先收集數據：**
+**Step 1 — Claude 預先收集數據：**
 - `mcp__technical-mcp__get_sector_rotation()` → 全板塊 ETF 相對強度 vs SPY（leading / improving / weakening / lagging）
 - `mcp__technical-mcp__get_batch_indicators(tickers=[所有持倉])` → 個股動能分數 + 趨勢
 
-**Step 2 — 呼叫 `/codex:rescue`：**
+**Step 2 — 呼叫 Codex（用 CLAUDE.md「Codex 呼叫方式」的 `codex exec` CLI）：**
 
 ```
-我的美股持倉（含市值占比 + 板塊歸屬）：
-[持倉表]
+我追蹤的標的（watchlist；有持倉資料者附市值占比 + 板塊歸屬）：
+[watchlist 表]
 
 當前板塊輪動數據（vs SPY）：
 [get_sector_rotation 完整輸出]
@@ -221,14 +218,14 @@ model: claude-sonnet-4-6
 **Codex 不該做：** [...]
 **Codex Verdict：** [...]
 
-#### 並排比較：Codex vs Codex（獨立排序）
+#### 並排比較：Claude vs Codex（獨立排序）
 
-| 項目 | Codex 排序 | Codex 排序 | 一致性 |
+| 項目 | Claude 排序 | Codex 排序 | 一致性 |
 |------|------------|-----------|--------|
-| #1 操作 | [Codex] | [Codex] | 同 / 異 |
-| #2 操作 | [Codex] | [Codex] | 同 / 異 |
-| #3 操作 | [Codex] | [Codex] | 同 / 異 |
-| Verdict | [Codex] | [Codex] | 同 / 異 |
+| #1 操作 | [Claude] | [Codex] | 同 / 異 |
+| #2 操作 | [Claude] | [Codex] | 同 / 異 |
+| #3 操作 | [Claude] | [Codex] | 同 / 異 |
+| Verdict | [Claude] | [Codex] | 同 / 異 |
 
 **真實共識 priorities**（兩邊都排前 3 的）：[1-3 條 — 高信心今天做]
 **真實分歧**（排序差很多的）：[1-3 條 — 值得深入]
@@ -240,8 +237,8 @@ model: claude-sonnet-4-6
 [B3 Codex 完整回覆]
 
 ---
-**值得追蹤的新機會：** [從 B2 挑 1-2 個 Codex 也認同的]
-**輪動 actionable：** [從 B3 挑 1-2 條 Codex 也認同的調倉操作]
+**值得追蹤的新機會：** [從 B2 挑 1-2 個 Claude 也認同的]
+**輪動 actionable：** [從 B3 挑 1-2 條 Claude 也認同的調倉操作]
 ```
 
 ### 進階：`--codex-adversarial`（opt-in 壓力測試）

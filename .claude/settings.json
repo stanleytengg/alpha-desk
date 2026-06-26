@@ -10,13 +10,13 @@
       "WebSearch",
       "WebFetch",
       "Task",
-      "mcp__firstrade-server",
       "mcp__yfinance-advanced",
       "mcp__technical",
       "mcp__eodhd-mcp",
       "mcp__sec-edgar-mcp",
       "mcp__fmp-mcp",
-      "mcp__polymarket-mcp"
+      "mcp__polymarket-mcp",
+      "mcp__coingecko"
     ]
   }
 }

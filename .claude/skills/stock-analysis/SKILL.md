@@ -14,8 +14,8 @@ Generate a standardized research report for one or more stock tickers.
 ## Step 0: 分析前準備
 
 ### 預設模式（無 `--current`）— 純獨立分析
-- **跳過** plan.md、feedback/*.md、持倉、journal 偵測
-- 分析不考慮現有倉位或投資計畫，僅基於公開市場數據
+- **跳過** plan.md、feedback/*.md、watchlist
+- 分析不考慮 watchlist 或投資計畫，僅基於公開市場數據
 - **保留 Step 0e**：Verdict 之前必須完成「核心 thesis / 證偽條件 / 機率分布」三題
 
 ### Step 0.5 (共用): Macro + Earnings + Fundamentals Cache Load
@@ -39,12 +39,11 @@ fundamentals cache 處理：
 - Section「三錨點公允價」: A1/A2/A3 錨點計算 Fair PE + EV（取代手寫點估計）
 - Section「Verdict」前呼叫 `probability-honesty-checker` 時，**強制**將 macro + base rate 帶入 prompt（Step 1d、1h、1i 必填）
 
-### `--current` 模式 — 整合持倉與計畫
-啟用後執行完整 CLAUDE.md Step 0 統一規範（0a → 0b → 0c → 0d → 0e）：
+### `--current` 模式 — 整合 watchlist 與計畫
+啟用後執行完整 CLAUDE.md Step 0 統一規範（0a → 0b → 0e）：
 - 讀 `plan.md` + `feedback/*.md`；了解此標的在計畫中的角色
-- 呼叫 `get_account_position` 取即時持倉
-- 今日 journal 不存在 → 執行 gap-fill + 變動偵測 + 自動建立 journal
-- 報告額外輸出「持倉確認」與「配置計畫定位」兩節
+- 讀 `watchlist.md`（CLAUDE.md Step 0b）— 確認是否在 watchlist、是否有持倉資料（shares/avg_cost）
+- 報告額外輸出「持倉確認」（若 watchlist 有 shares/avg_cost：成本、口數、未實現損益；無則略過）與「配置計畫定位」兩節
 
 ---
 
@@ -52,7 +51,7 @@ fundamentals cache 處理：
 - Single ticker: `/stock-analysis PLTR`
 - Multiple tickers for comparison: `/stock-analysis DCO AIR`
 - With specific focus: `/stock-analysis TEAM options` (include options strategy suggestions)
-- With portfolio context: `/stock-analysis MU --current` (activates plan.md + positions)
+- With watchlist context: `/stock-analysis MU --current` (activates plan.md + watchlist holdings)
 - With Codex second opinion: `/stock-analysis MU --codex` or `/stock-analysis MU --2nd`
 - Combined: `/stock-analysis MU --current --codex`
 
@@ -101,11 +100,11 @@ fundamentals cache 處理：
 
    多股比較時，為每個 ticker 各派一組 Agent。若 Agent tool 不可用，依序呼叫亦可。
 
-3. **Check Current Portfolio**（`--current` 模式才執行）
-   - 呼叫 `get_account_position` 確認是否持有此標的
-   - 若持有，在報告開頭輸出「持倉確認」段落（成本、口數、損益）
+3. **Check Watchlist**（`--current` 模式才執行）
+   - 讀 `watchlist.md` 確認此標的是否在清單、是否有持倉資料（shares/avg_cost）
+   - 若 watchlist 帶 shares/avg_cost，在報告開頭輸出「持倉確認」段落（成本、口數、未實現損益）；只有追蹤無持倉 → 標「watchlist 追蹤中（無持倉資料）」
 
-4a. **Thesis Ledger 雙向整合（`--current` 或有持倉時執行；新標的分析只做「寫」端）**
+4a. **Thesis Ledger 雙向整合（`--current` 或 watchlist 有持倉時執行；新標的分析只做「寫」端）**
 
 ### 讀端（consumer）— 了解「上次的論點驗證了沒」
 
