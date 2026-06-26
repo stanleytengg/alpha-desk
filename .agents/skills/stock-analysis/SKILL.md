@@ -433,7 +433,7 @@ raw data 必須是 fact 數值，**不能** 是 derived label。技術面只給 
 - 用客觀數據與你自己的 mental model 從 raw 數值自行 derive interpretation
 - 若 ticker 在 ±48h earnings window，特別考慮「earnings sell-on-news」vs「thesis 破裂」的根因區分
 
-請以繁體中文回覆，控制在 700 字內。
+Write in the resolved output language (English by default; Traditional Chinese if `--cn`). Keep it within 700 words.
 
 --effort high --fresh
 ```
@@ -484,7 +484,7 @@ raw data 必須是 fact 數值，**不能** 是 derived label。技術面只給 
 [追加段落 — 只在 --codex-adversarial 時觸發]
 請對 Claude 的 [TICKER] 結論進行對立面審查 — 攻擊 thesis、找最弱假設、提出 dissenting verdict。
 [Claude 完整 thesis + verdict + technical analysis]
-請以繁體中文回覆。
+Write in the resolved output language (English by default; Traditional Chinese if `--cn`).
 ```
 
 > 若 Codex 失敗 → 輸出 `⚠️ Codex 不可用：[error]，跳過第二意見`，繼續正常輸出。
@@ -492,7 +492,7 @@ raw data 必須是 fact 數值，**不能** 是 derived label。技術面只給 
 ---
 
 ## Output Language
-Use Traditional Chinese (繁體中文) for all text output.
+Use the resolved output language (English by default; Traditional Chinese if `--cn`) for all text output.
 
 ## 存檔 + HTML 生成
 報告完成後：

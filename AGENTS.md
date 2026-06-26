@@ -4,7 +4,11 @@
 This is an investment research workspace for US stocks, options, and cryptocurrency. It is **watchlist-driven**: the user maintains a manual `watchlist.md` (tickers + optional holdings) which is the source of truth for every skill — there is no broker integration. The user researches equities/options and crypto, and reasons about ideas through a first-principles + expected-value lens.
 
 ## Language & Format
-- **All output in Traditional Chinese (繁體中文)**
+- **Output language resolution (applies to EVERY skill, governs all per-skill output instructions):**
+  - **Default: English.** All reports, briefings, analysis, and Verdicts are written in English unless a switch below applies.
+  - **`--cn` flag → Traditional Chinese (繁體中文).** If the user's invocation includes `--cn` (or `--zh`), render that entire run's output in Traditional Chinese.
+  - **Follow the user's language otherwise.** If the user writes their request in Chinese (and no flag is given), respond in Traditional Chinese; if in English, respond in English.
+  - This rule **overrides** any "繁體中文輸出 / Traditional Chinese output" line still present in individual SKILL.md files — treat those as "use the resolved output language," not a hard Chinese mandate.
 - Thread/social media posts: plain text only, NO markdown, NO tables
 - Reports and analysis: markdown tables are fine
 

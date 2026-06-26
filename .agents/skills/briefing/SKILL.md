@@ -933,7 +933,7 @@ raw data 區只能放 fact 數值，**不能放** derived label：
 - 保持獨立判斷
 - earnings window 內的 ticker 不直接套「汰弱留強」
 
-請以繁體中文回覆，控制在 700 字內。
+Write in the resolved output language (English by default; Traditional Chinese if `--cn`). Keep it within 700 words.
 
 --effort high --fresh
 ```
@@ -959,7 +959,7 @@ raw data 區只能放 fact 數值，**不能放** derived label：
 3. 要追這些新機會，最該砍掉哪一檔現有持倉？為什麼？
 4. 提供 2-3 個具體 actionable 建議（含目標 entry zone）
 
-請以繁體中文回覆。輸出限 600 字。
+Write in the resolved output language (English by default; Traditional Chinese if `--cn`). Limit output to 600 words.
 ```
 
 ---
@@ -988,7 +988,7 @@ raw data 區只能放 fact 數值，**不能放** derived label：
 3. 資金流向：從 weakening 輪到 leading 的訊號是否明確？建議調倉路徑
 4. 具體建議：3 條 actionable 輪動操作（從哪檔減 → 加到哪檔，附理由）
 
-請以繁體中文回覆。輸出限 700 字。
+Write in the resolved output language (English by default; Traditional Chinese if `--cn`). Limit output to 700 words.
 ```
 
 ---
@@ -1043,7 +1043,7 @@ raw data 區只能放 fact 數值，**不能放** derived label：
 ---
 
 ## Output Format
-- 繁體中文
+- Output in the resolved output language (English by default; Traditional Chinese if `--cn`)
 - 簡潔 markdown 表格
 - 所有金額為 USD
 - Quick 版應在一個畫面內完成

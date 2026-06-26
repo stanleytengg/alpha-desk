@@ -77,6 +77,6 @@ node /opt/homebrew/lib/node_modules/financial-modeling-prep-mcp-server/stdio-ent
 - 提醒：MCP server 由 Claude Code 自動管理，通常重開 session 即可恢復
 
 ## Output Format
-- 繁體中文輸出
+- Output in the resolved output language (English by default; Traditional Chinese if `--cn`)
 - 簡潔表格格式
 - 預估執行時間：~30 秒

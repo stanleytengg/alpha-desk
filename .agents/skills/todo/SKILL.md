@@ -56,7 +56,7 @@ model: claude-sonnet-4-6
 
 ## 輸出格式
 
-用繁體中文輸出，結構固定如下：
+Output in the resolved output language (English by default; Traditional Chinese if `--cn`), with the fixed structure below:
 
 ```
 ## 今日/明日開盤行動清單
@@ -146,7 +146,7 @@ model: claude-sonnet-4-6
 - 觸發條件必須 falsifiable
 - 不假設 Claude 已說過什麼
 
-請以繁體中文回覆，控制在 700 字內。
+Write in the resolved output language (English by default; Traditional Chinese if `--cn`). Keep it within 700 words.
 
 --effort high --fresh
 ```
@@ -170,7 +170,7 @@ model: claude-sonnet-4-6
 3. 要追這些新機會，最該砍掉哪一檔現有持倉？為什麼？
 4. 2-3 個具體 actionable 建議（含目標 entry zone），可加進明日待辦
 
-請以繁體中文回覆。輸出限 600 字。
+Write in the resolved output language (English by default; Traditional Chinese if `--cn`). Limit output to 600 words.
 ```
 
 ### B3. 輪動分析（rotation scan）
@@ -197,7 +197,7 @@ model: claude-sonnet-4-6
 3. 資金流向：從 weakening 輪到 leading 的訊號是否明確？建議調倉路徑
 4. 具體建議：3 條 actionable 輪動操作（從哪檔減 → 加到哪檔，附理由），可直接加入今日待辦
 
-請以繁體中文回覆。輸出限 700 字。
+Write in the resolved output language (English by default; Traditional Chinese if `--cn`). Limit output to 700 words.
 ```
 
 ### 輸出整合
@@ -250,4 +250,4 @@ model: claude-sonnet-4-6
 ---
 
 ## Output Language
-繁體中文
+Output language: the resolved output language (English by default; Traditional Chinese if `--cn`)

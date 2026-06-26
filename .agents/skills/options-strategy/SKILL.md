@@ -215,7 +215,7 @@ For stocks that are overbought or above target price:
 - 不假設 Claude 選哪個 strike
 - 用客觀數據與你自己的 mental model
 
-請以繁體中文回覆，控制在 600 字內。
+Write in the resolved output language (English by default; Traditional Chinese if `--cn`). Keep it within 600 words.
 
 --effort high --fresh
 ```
@@ -262,7 +262,7 @@ For stocks that are overbought or above target price:
 ---
 
 ## Output Language
-Use Traditional Chinese (繁體中文) for all text output.
+Use the resolved output language (English by default; Traditional Chinese if `--cn`) for all text output.
 
 ## 存檔 + HTML 生成
 報告完成後：

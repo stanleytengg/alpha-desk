@@ -241,7 +241,7 @@ def main() -> int:
     # ── HTML generation (best-effort, runs before send so link can be appended)
     html_url = _generate_html(date_str, dry_run)
     if html_url:
-        push_text = push_text.rstrip() + f"\n\n🔗 網頁版：{html_url}"
+        push_text = push_text.rstrip() + f"\n\n🔗 Web version: {html_url}"
         log_entry["html"] = "ok"
     else:
         log_entry["html"] = "failed" if html_url is None else "skipped"

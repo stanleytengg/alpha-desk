@@ -119,7 +119,7 @@ EV ([horizon]) = X.XX%
 
 ## Output Format
 
-繁體中文。所有數字 explicit。**絕不出現**：「略偏正」「略偏負」「中性偏多」「應該會」「不確定性高」等質性語言 — 全部換成數字區間或機率。
+Write in the resolved output language (English by default; Traditional Chinese if `--cn`). All numbers explicit.**絕不出現**：「略偏正」「略偏負」「中性偏多」「應該會」「不確定性高」等質性語言 — 全部換成數字區間或機率。
 
 ## 失敗模式與防呆
 
